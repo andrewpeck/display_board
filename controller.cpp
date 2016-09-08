@@ -2,15 +2,41 @@
 #include <assert.h>
 #include "controller.h"
 
-uint16_t Controller::readAdc (uint8_t ichan)
+uint16_t Controller::readArduinoAdc (uint8_t ichan)
 {
     assert (ichan > 0); 
     assert (ichan < NUM_ADC_CHANNELS+1); 
 
-    return analogRead(this->adcArduinoMap(ichan)); 
+    return analogRead(this->arduinoAdcPinswap(arduinoAnalogPin(ichan))); 
 }
 
-uint16_t Controller::readSwitchedAdc (uint8_t ichan)
+uint8_t arduinoAnalogPin (uint8_t ichan)
+{
+    switch (ichan) {
+        case 0x1: return PIN_A0;
+        case 0x2: return PIN_A1;
+        case 0x3: return PIN_A2;
+        case 0x4: return PIN_A3;
+        case 0x5: return PIN_A4;
+        case 0x6: return PIN_A5;
+        case 0x7: return PIN_A6;
+        case 0x8: return PIN_A7;
+        default:  return 0x0;
+    }
+}
+
+uint16_t Controller::readSwitchedAdc (uint8_t ichan, uint8_t gain) 
+{
+    setSwitchGain(gain); 
+    readSwitchedAdc(ichan); 
+}
+
+uint16_t Controller::readSwitchedAdc (uint8_t ichan) 
+{
+    return adc.readVoltage();
+}
+
+uint16_t Controller::autoReadSwitchedAdc (uint8_t ichan)
 {
     assert (ichan > 0); 
     assert (ichan < NUM_ADC_CHANNELS+1); 
@@ -20,36 +46,38 @@ uint16_t Controller::readSwitchedAdc (uint8_t ichan)
     // step down the gain until we get a voltage reading that isn't too close to the rail. 
     // should probably be replaced with some apriori knowledge of the voltage, based on reading from the uC adc inputs. 
 
-    this->readAdc (ichan); 
+    // TODO 
+    // this->readArduinoAdc (ichan); 
 
-    this->gain.setGain (10); 
-    voltage = adc.readVoltage();
-    if (adc.maxVoltage() - voltage < 0.1) {
+    setSwitchGain(10); 
+    voltage = readSwitchedAdc(); 
+    if (this->adc.maxVoltage() - voltage < 0.1) {
         return voltage; 
     }
 
-    this->gain.setGain (5); 
-    voltage = adc.readVoltage();
-    if (adc.maxVoltage() - voltage < 0.1) {
+    setSwitchGain(5); 
+    voltage = readSwitchedAdc(); 
+    if (this->adc.maxVoltage() - voltage < 0.1) {
         return voltage; 
     }
 
-    this->gain.setGain (2); 
-    voltage = adc.readVoltage();
-    if (adc.maxVoltage() - voltage < 0.1) {
+    setSwitchGain(2); 
+    voltage = readSwitchedAdc(); 
+    if (this->adc.maxVoltage() - voltage < 0.1) {
         return voltage; 
     }
 
-    this->gain.setGain (1); 
-    voltage = adc.readVoltage();
+    setSwitchGain(1); 
+    voltage = readSwitchedAdc(); 
     return voltage; 
     
 }
 
-void Controller::writeDac (uint8_t ichan)
+void Controller::writeDac (uint8_t ichan, uint16_t value)
 {
     assert (ichan > 0); 
     assert (ichan < NUM_ADC_CHANNELS+1); 
+    this->dac.setDacValue(ichan, value); 
 }
 
 void Controller::setSwitchGain (uint8_t gain)
@@ -82,15 +110,14 @@ uint8_t Controller::adcPinswap (uint8_t ichan)
     }
 }
 
-uint8_t Controller::adcArduinoMap (uint8_t ichan)
+uint8_t Controller::arduinoAdcPinswap (uint8_t ichan)
 {
     assert (ichan > 0); 
     assert (ichan < NUM_ADC_CHANNELS+1); 
-    // ain0=pa0
-    // ain2=[b-9
-    // ain3=pb09
-    //     ain4=pa04
-    //     ain5=pa05
+
+    // in "Digital Logic", the order of inputs is reversed; 
+    // need to unreverse it in software
+
 
     switch (ichan) {
         case 0x1: return 0x8;

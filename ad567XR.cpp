@@ -3,7 +3,7 @@
 #include <assert.h>
 #include "ad5672R.h"
 
-AD5672R::AD5672R (
+AD567XR::AD567XR (
             uint8_t gain,
             uint8_t resolution,
             uint8_t gain_select_pin,
@@ -31,7 +31,7 @@ AD5672R::AD5672R (
     digitalWrite(this->config.sync_pin,        0x1);        // startup inactive
 }
 
-void AD5672R::setDacValue      (uint8_t channel, uint16_t value)
+void AD567XR::setValue      (uint8_t channel, uint16_t value)
 {
     uint32_t packet = buildPacket(CMD_WRITE_AND_LOAD_DAC, channel, value);
     digitalWrite(this->config.sync_pin, LOW);
@@ -41,19 +41,19 @@ void AD5672R::setDacValue      (uint8_t channel, uint16_t value)
     digitalWrite(this->config.sync_pin, HIGH);
 }
 
-void AD5672R::setDacVoltage    (uint8_t channel, float voltage)
+void AD567XR::setVoltage    (uint8_t channel, float voltage)
 {
     float gainf = (this->config.gain) ? (2.0f) : (1.0f);
     uint16_t dac_counts = static_cast<uint16_t> ( (voltage * this->config.vref * gainf )/maxDacCounts() );
-    setDacValue (channel, dac_counts);
+    setValue (channel, dac_counts);
 }
 
-uint32_t AD5672R::buildPacket   (uint8_t command, uint8_t address, uint16_t data)
+uint32_t AD567XR::buildPacket   (uint8_t command, uint8_t address, uint16_t data)
 {
     // |--------+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+----+----+----+----+----+----+----+----+----+----|
     // | Bit    | 23 | 22 | 21 | 20 | 19 | 18 | 17 | 16 | 15  | 14  | 13  | 12  | 11  | 10  | 9  | 8  | 7  | 6  | 5  | 4  | 3  | 2  | 1  | 0  |
     // |--------+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+----+----+----+----+----+----+----+----+----+----|
-    // | AD5672 | C3 | C2 | C1 | C0 | A3 | A2 | A1 | A0 | D11 | D10 | D9  | D8  | D7  | D6  | D5 | D4 | D3 | D2 | D1 | D0 | X  | X  | X  | X  |
+    // | AD567X | C3 | C2 | C1 | C0 | A3 | A2 | A1 | A0 | D11 | D10 | D9  | D8  | D7  | D6  | D5 | D4 | D3 | D2 | D1 | D0 | X  | X  | X  | X  |
     // | AD5676 | C3 | C2 | C1 | C0 | A3 | A2 | A1 | A0 | D15 | D14 | D13 | D12 | D11 | D10 | D9 | D8 | D7 | D6 | D5 | D4 | D3 | D2 | D1 | D0 |
     // |--------+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+----+----+----+----+----+----+----+----+----+----|
     // |        | Command           | Address           | Data                                                            | 16-bit data       |
@@ -72,7 +72,7 @@ uint32_t AD5672R::buildPacket   (uint8_t command, uint8_t address, uint16_t data
     return packet; 
 }
 
-uint16_t AD5672R::maxDacCounts ()
+uint16_t AD567XR::maxDacCounts ()
 {
     return ((0x2<<this->config.resolution)-1);
 }

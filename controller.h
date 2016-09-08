@@ -3,11 +3,11 @@
 
 #include <stdint.h>
 
-#include "ad5672R.h"
+#include "ad567XR.h"
 #include "adg408.h"
 #include "ad8250.h"
 #include "ltc6903.h"
-#include "max11101.h"
+#include "max1110X.h"
 
 class Controller {
     public:
@@ -19,57 +19,45 @@ class Controller {
          dds  (dds_sen_pin, dds_oe_pin, dds_clk_enable, dds_clk_bar_enable)
         {};
 
-        uint16_t readAdc         (uint8_t ichan);
-        uint16_t readSwitchedAdc (uint8_t ichan);
-        void     writeDac        (uint8_t ichan);
-        void     setSwitchGain   (uint8_t gain);
-        void     setDDSFrequency (uint32_t freq);
+        uint16_t readArduinoAdc      (uint8_t ichan);
+
+        uint16_t readSwitchedAdc     (uint8_t ichan);
+        uint16_t readSwitchedAdc     (uint8_t ichan, uint8_t gain);
+        uint16_t autoReadSwitchedAdc (uint8_t ichan);
+        void     setSwitchGain       (uint8_t gain);
+
+        void     writeDac            (uint8_t ichan);
+        void     setDDSFrequency     (uint32_t freq);
 
     private:
 
         static const int NUM_ADC_CHANNELS=8;
 
-        uint8_t adcPinswap    (uint8_t ichan);
-        uint8_t adcArduinoMap (uint8_t ichan);
-        uint8_t dacPinswap    (uint8_t ichan);
-        uint8_t switchPinswap (uint8_t ichan);
-        uint8_t obufPinswap   (uint8_t ichan);
+        uint8_t adcPinswap       (uint8_t ichan);
+        uint8_t switchPinswap    (uint8_t ichan);
+
+        uint8_t dacPinswap       (uint8_t ichan);
+        uint8_t obufPinswap      (uint8_t ichan);
+
+        uint8_t arduinoAdcPinswap (uint8_t ichan);
+        uint8_t arduinoAnalogPin  (uint8_t ichan);
 
         //--------------------------------------------------------------------------------------------------------------
         // IO Map
         //--------------------------------------------------------------------------------------------------------------
 
-        // map taken from display board schematic; convert from io# into Pin Package Number
-        enum {io9=19, io10=20, io6=22, io5=21, io13=23, io1=29, io2=30, io7=31, io8=32, io14=24, io11=37, pa18=27};
+        // map taken from variants.cpp
+        enum {pa23=0, pa22, pa21, pa20, pa13, pa12, pa15, pb22, pb10, pb11, pb23, pa14, pb2, pa28, pa8, pa9, pa10, pa11};
 
-        uint8_t pin2arduino (uint8_t io)
-        {
-            // look at "Digital Logic" section of schematics... use samd21.SchDoc port names and convert to 
-            // convert from digital logic Samd21 IO names; these are enummed to Package Pin numbers. 
-            // map the package pin numbers to Arduino digitalWrite numbers
-            switch (io) {
-                case io9  : return 0;  // pin 19 = pb10_s4_spi_mosi
-                case io10 : return 0;  // pin 20 = pb11_s4_spi_sck
-                case io6  : return 0;  // pin 22 = pa13_gpio
-                case io5  : return 0;  // pin 21 = pb12_s4_spi_miso
-                case io13 : return 0;  // pin 23 = pa08_tcc0-w0
-                case io1  : return 0;  // pin 29 = pa20_tcc0-w6
-                case io2  : return 0;  // pin 30 = dgi_gpio1
-                case io7  : return 0;  // pin 31 = sda
-                case io8  : return 0;  // pin 32 = scl
-                case io14 : return 0;  // pin 24 = pa15_tcc0-w5
-                case io11 : return 0;  // pin 37 = txd/3.1b
-                case pa18 : return 0;  // pin 27 = ss/3.7c
-                default   : return 0;
-            }
-        }
+        // map taken from display board schematic; convert from io# to PA/BX
+        enum {io9=pb10, io10=pb11, io6=pa13, io5=pa12, io13=pa8, io1=pa20, io2=pa21, io7=pa22, io8=pa23, io14=pa15, io11=pb22, pa18=27};
 
         //--------------------------------------------------------------------------------------------------------------
         // DDS
         //--------------------------------------------------------------------------------------------------------------
 
-        const uint8_t dds_sen_pin        = pin2arduino(io9 );
-        const uint8_t dds_oe_pin         = pin2arduino(io10);
+        const uint8_t dds_sen_pin        = io9 ;
+        const uint8_t dds_oe_pin         = io10;
         const uint8_t dds_clk_enable     = 1;
         const uint8_t dds_clk_bar_enable = 0;
 
@@ -77,33 +65,33 @@ class Controller {
         // Gain
         //--------------------------------------------------------------------------------------------------------------
 
-        const uint8_t gain_a0_pin = pin2arduino(io6);
-        const uint8_t gain_a1_pin = pin2arduino(io5);
+        const uint8_t gain_a0_pin = io6;
+        const uint8_t gain_a1_pin = io5;
 
         //--------------------------------------------------------------------------------------------------------------
         // ADC
         //--------------------------------------------------------------------------------------------------------------
 
-        const uint8_t adc_cs_pin = pin2arduino(io13);
+        const uint8_t adc_cs_pin = io13;
 
         //--------------------------------------------------------------------------------------------------------------
         // Switch Pins
         //--------------------------------------------------------------------------------------------------------------
 
-        const uint8_t sw_en_pin = pin2arduino(io1);
-        const uint8_t sw_a0_pin = pin2arduino(io2);
-        const uint8_t sw_a1_pin = pin2arduino(io7);
-        const uint8_t sw_a2_pin = pin2arduino(io8);
+        const uint8_t sw_en_pin = io1;
+        const uint8_t sw_a0_pin = io2;
+        const uint8_t sw_a1_pin = io7;
+        const uint8_t sw_a2_pin = io8;
 
         //--------------------------------------------------------------------------------------------------------------
         // Dac
         //--------------------------------------------------------------------------------------------------------------
-        uint8_t dac_gain       = 2;
-        uint8_t dac_resolution = 12;
 
-        const uint8_t dac_gain_select_pin = pin2arduino(io14);
-        const uint8_t dac_sync_pin        = pin2arduino(pa18);
-        const uint8_t dac_reset_pin       = pin2arduino(io11);
+        uint8_t dac_gain       = 2;
+
+        const uint8_t dac_gain_select_pin = io14;
+        const uint8_t dac_sync_pin        = pa18;
+        const uint8_t dac_reset_pin       = io11;
 
         float   dac_vref          = 4.096f;
         bool    dac_software_ldac = false;
@@ -118,9 +106,6 @@ class Controller {
         ADG408   sw   ;
         LTC6903  dds  ;
 
-
 };
-
-
 
 #endif /* CONTROLLER_H */

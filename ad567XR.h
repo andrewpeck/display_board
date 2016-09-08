@@ -1,9 +1,33 @@
-#ifndef AD5672R_H
-#define AD5672R_H
+#ifndef AD567XR_H
+#define AD567XR_H
 
 #include <stdint.h>
 
-class AD5672R {
+class AD5672R : public AD567XR {
+    public: 
+        AD5672R (
+                uint8_t gain            = 1,
+                uint8_t gain_select_pin = -1,
+                uint8_t sync_pin        = -1,
+                uint8_t reset_pin       = -1,
+                float   vref            = 4.096f,
+                bool    software_ldac   = false
+                ) : AD567XR (gain, gain_select_pin, sync_pin, reset_pin, vref, software_ldac, 12) {}  // 12 bit version
+}; 
+
+class AD5676R : public AD567XR {
+    public: 
+        AD5676R (
+                uint8_t gain            = 1,
+                uint8_t gain_select_pin = -1,
+                uint8_t sync_pin        = -1,
+                uint8_t reset_pin       = -1,
+                float   vref            = 4.096f,
+                bool    software_ldac   = false
+                ) : AD567XR (gain, gain_select_pin, sync_pin, reset_pin, vref, software_ldac, 16) {}  // 16 bit version
+}; 
+
+class AD567XR {
 
     public:
 
@@ -11,22 +35,23 @@ class AD5672R {
         // Constructor
         //--------------------------------------------------------------------------------------------------------------
 
-        AD5672R (
-            uint8_t gain            = 1,
-            uint8_t resolution      = 12,
-            uint8_t gain_select_pin = -1,
-            uint8_t sync_pin        = -1,
-            uint8_t reset_pin       = -1,
-            float   vref            = 4.096f,
-            bool    software_ldac   = false
-        );
+        AD567XR (
+                uint8_t gain            = 1,
+                uint8_t gain_select_pin = -1,
+                uint8_t sync_pin        = -1,
+                uint8_t reset_pin       = -1,
+                float   vref            = 4.096f,
+                bool    software_ldac   = false
+                uint8_t resolution      = 12,
+                );
 
         //--------------------------------------------------------------------------------------------------------------
         // Public Functions
         //--------------------------------------------------------------------------------------------------------------
 
-        void     setDacValue      (uint8_t channel, uint16_t value);
-        void     setDacVoltage    (uint8_t channel, float    voltage);
+        void     setValue         (uint8_t channel, uint16_t value);
+        void     setVoltage       (uint8_t channel, float    voltage);
+        void     setResolution    (uint8_t resolution); 
 
     private:
 
@@ -77,4 +102,4 @@ class AD5672R {
 };
 
 
-#endif /* AD5672R_H */
+#endif /* AD567XR_H */

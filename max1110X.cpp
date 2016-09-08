@@ -4,15 +4,16 @@
 
 #include "max11101.h"
 
-Max11101::Max11101 (uint8_t cs_pin)
+Max1110X::Max1110X (uint8_t cs_pin, uint8_t resolution)
 {
-    this->config.cs_pin=cs_pin;
+    this->config.cs_pin     = cs_pin;
+    this->config.resolution = resolution;
 
     pinMode(this->config.cs_pin, OUTPUT);
     digitalWrite(this->config.cs_pin, 1);
 }
 
-uint16_t Max11101::readADC ()
+uint16_t Max1110X::readADC ()
 {
     digitalWrite(this->config.cs_pin, LOW);
 
@@ -29,18 +30,17 @@ uint16_t Max11101::readADC ()
     return (0x3ff & ((b1<<8) | (b0<<0)));
 }
 
-float Max11101::readVoltage ()
+float Max1110X::readVoltage ()
 {
     return ( this->config.vref * ( readADC() / maxCounts() ));
 }
 
-uint16_t Max11101::maxCounts()
+uint16_t Max1110X::maxCounts()
 {
-    return ((1<<14)-1); 
+    return ((1<<this->config.resolution)-1); 
 }
 
-float Max11101::maxVoltage()
+float Max1110X::maxVoltage()
 {
     return (this->config.vref * maxCounts());
 }
-
