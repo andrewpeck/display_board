@@ -10,23 +10,27 @@
 #include "max1110X.h"
 
 class Controller {
+
     public:
+
         Controller () :
          gain (gain_a0_pin, gain_a1_pin),
          adc  (adc_cs_pin),
-         dac  (dac_gain, dac_resolution, dac_gain_select_pin, dac_sync_pin, dac_reset_pin, dac_vref, dac_software_ldac),
+         dac  (dac_gain, dac_gain_select_pin, dac_sync_pin, dac_reset_pin, dac_vref, dac_software_ldac),
          sw   (sw_en_pin, sw_a0_pin, sw_a1_pin, sw_a2_pin),
          dds  (dds_sen_pin, dds_oe_pin, dds_clk_enable, dds_clk_bar_enable)
         {};
 
         uint16_t readArduinoAdc      (uint8_t ichan);
 
+        uint16_t readSwitchedAdc     ();
         uint16_t readSwitchedAdc     (uint8_t ichan);
         uint16_t readSwitchedAdc     (uint8_t ichan, uint8_t gain);
+
         uint16_t autoReadSwitchedAdc (uint8_t ichan);
         void     setSwitchGain       (uint8_t gain);
 
-        void     writeDac            (uint8_t ichan);
+        void     writeDac            (uint8_t ichan, uint16_t value);
         void     setDDSFrequency     (uint32_t freq);
 
     private:

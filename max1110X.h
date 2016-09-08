@@ -1,17 +1,7 @@
-#ifndef MAX11101_H
-#define MAX11101_H
+#ifndef MAX1110X_H
+#define MAX1110X_H
 
 #include <stdint.h>
-
-class Max11101 : public Max1110X {
-    public: 
-        Max11101 (uint8_t cs_pin) : Max1110X (cs_pin, 12) {}  // 12 bit version
-};
-
-class Max11100 : public Max1110X {
-    public: 
-        Max11100 (uint8_t cs_pin) : Max1110X (cs_pin, 16) {}  // 16 bit version
-};
 
 class Max1110X {
     public:
@@ -31,4 +21,16 @@ class Max1110X {
         } config;
 } ;
 
-#endif /* MAX11101_H */
+class Max11101 : public Max1110X {
+    public: 
+        Max11101 (uint8_t cs_pin) : Max1110X (cs_pin, 12) {}  // 12 bit version
+};
+
+class Max11100 : public Max1110X {
+    public: 
+        Max11100 (uint8_t cs_pin) : Max1110X (cs_pin, 16) {}  // 16 bit version
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+#endif /* MAX1110X_H */
+//----------------------------------------------------------------------------------------------------------------------

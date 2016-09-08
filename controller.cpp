@@ -4,25 +4,39 @@
 
 uint16_t Controller::readArduinoAdc (uint8_t ichan)
 {
-    assert (ichan > 0); 
-    assert (ichan < NUM_ADC_CHANNELS+1); 
+    assert (ichan >= 0); 
+    assert (ichan < NUM_ADC_CHANNELS); 
 
     return analogRead(this->arduinoAdcPinswap(arduinoAnalogPin(ichan))); 
 }
 
-uint8_t arduinoAnalogPin (uint8_t ichan)
+uint8_t Controller::arduinoAnalogPin (uint8_t ichan)
 {
     switch (ichan) {
-        case 0x1: return PIN_A0;
-        case 0x2: return PIN_A1;
-        case 0x3: return PIN_A2;
-        case 0x4: return PIN_A3;
-        case 0x5: return PIN_A4;
-        case 0x6: return PIN_A5;
-        case 0x7: return PIN_A6;
-        case 0x8: return PIN_A7;
+        case 0x0: return PIN_A0;
+        case 0x1: return PIN_A1;
+        case 0x2: return PIN_A2;
+        case 0x3: return PIN_A3;
+        case 0x4: return PIN_A4;
+        case 0x5: return PIN_A5;
+        case 0x6: return PIN_A6;
+        case 0x7: return PIN_A7;
         default:  return 0x0;
     }
+}
+
+uint16_t Controller::readSwitchedAdc () 
+{
+    return this->adc.readVoltage();
+}
+
+uint16_t Controller::readSwitchedAdc (uint8_t ichan) 
+{
+    assert (ichan >= 0); 
+    assert (ichan < NUM_ADC_CHANNELS); 
+
+    sw.setChannel(ichan); 
+    return adc.readVoltage();
 }
 
 uint16_t Controller::readSwitchedAdc (uint8_t ichan, uint8_t gain) 
@@ -31,15 +45,12 @@ uint16_t Controller::readSwitchedAdc (uint8_t ichan, uint8_t gain)
     readSwitchedAdc(ichan); 
 }
 
-uint16_t Controller::readSwitchedAdc (uint8_t ichan) 
-{
-    return adc.readVoltage();
-}
-
 uint16_t Controller::autoReadSwitchedAdc (uint8_t ichan)
 {
-    assert (ichan > 0); 
-    assert (ichan < NUM_ADC_CHANNELS+1); 
+    assert (ichan >= 0); 
+    assert (ichan < NUM_ADC_CHANNELS); 
+
+    this->sw.setChannel(ichan); 
 
     float voltage; 
 
@@ -75,9 +86,9 @@ uint16_t Controller::autoReadSwitchedAdc (uint8_t ichan)
 
 void Controller::writeDac (uint8_t ichan, uint16_t value)
 {
-    assert (ichan > 0); 
-    assert (ichan < NUM_ADC_CHANNELS+1); 
-    this->dac.setDacValue(ichan, value); 
+    assert (ichan >= 0); 
+    assert (ichan <  NUM_ADC_CHANNELS); 
+    this->dac.setValue(ichan, value); 
 }
 
 void Controller::setSwitchGain (uint8_t gain)
@@ -92,42 +103,42 @@ void Controller::setDDSFrequency (uint32_t freq)
 
 uint8_t Controller::adcPinswap (uint8_t ichan)
 {
-    assert (ichan > 0); 
-    assert (ichan < NUM_ADC_CHANNELS+1); 
+    assert (ichan >= 0); 
+    assert (ichan <  NUM_ADC_CHANNELS); 
 
     // Converts from channel inputs to enumerated analog inputs in the Microcontroller schematic
     // Mapping from digital_logic.SchDoc
     switch (ichan) {
-        case 0x1: return 0x8;
-        case 0x2: return 0x7;
-        case 0x3: return 0x6;
-        case 0x4: return 0x5;
-        case 0x5: return 0x4;
-        case 0x6: return 0x3;
-        case 0x7: return 0x2;
-        case 0x8: return 0x1;
+        case 0x0: return 0x7;
+        case 0x1: return 0x6;
+        case 0x2: return 0x5;
+        case 0x3: return 0x4;
+        case 0x4: return 0x3;
+        case 0x5: return 0x2;
+        case 0x6: return 0x1;
+        case 0x7: return 0x0;
         default:  return 0x0;
     }
 }
 
 uint8_t Controller::arduinoAdcPinswap (uint8_t ichan)
 {
-    assert (ichan > 0); 
-    assert (ichan < NUM_ADC_CHANNELS+1); 
+    assert (ichan >= 0); 
+    assert (ichan <  NUM_ADC_CHANNELS); 
 
     // in "Digital Logic", the order of inputs is reversed; 
     // need to unreverse it in software
 
 
     switch (ichan) {
-        case 0x1: return 0x8;
-        case 0x2: return 0x7;
-        case 0x3: return 0x6;
-        case 0x4: return 0x5;
-        case 0x5: return 0x4;
-        case 0x6: return 0x3;
-        case 0x7: return 0x2;
-        case 0x8: return 0x1;
+        case 0x0: return 0x7;
+        case 0x1: return 0x6;
+        case 0x2: return 0x5;
+        case 0x3: return 0x4;
+        case 0x4: return 0x3;
+        case 0x5: return 0x2;
+        case 0x6: return 0x1;
+        case 0x7: return 0x0;
         default:  return 0x0;
     }
 }
@@ -137,37 +148,37 @@ uint8_t Controller::dacPinswap (uint8_t ichan)
     // Convert from DAC outputs (determined by DAC hardware) to schematic channel outputs 
     // Derived from dac.SchDoc
 
-    assert (ichan > 0); 
-    assert (ichan < NUM_ADC_CHANNELS+1); 
+    assert (ichan >= 0); 
+    assert (ichan <  NUM_ADC_CHANNELS); 
 
     switch (ichan) {
-        case 0x1: return 0x4;
-        case 0x2: return 0x3;
-        case 0x3: return 0x2;
-        case 0x4: return 0x1;
-        case 0x5: return 0x6;
-        case 0x6: return 0x5;
-        case 0x7: return 0x8;
-        case 0x8: return 0x7;
+        case 0x0: return 0x3;
+        case 0x1: return 0x2;
+        case 0x2: return 0x1;
+        case 0x3: return 0x0;
+        case 0x4: return 0x5;
+        case 0x5: return 0x4;
+        case 0x6: return 0x7;
+        case 0x7: return 0x6;
         default:  return 0x0;
     }
 }
 
 uint8_t Controller::switchPinswap (uint8_t ichan)
 {
-    assert (ichan > 0); 
-    assert (ichan < NUM_ADC_CHANNELS+1); 
+    assert (ichan >= 0); 
+    assert (ichan <  NUM_ADC_CHANNELS); 
 
     // Map pinswapping done on the ADG408 inputs which multiplex the Amplifier/ADC input
     switch (ichan) {
-        case 0x1: return 0x4;
-        case 0x2: return 0x3;
-        case 0x3: return 0x3;
-        case 0x4: return 0x1;
+        case 0x0: return 0x3;
+        case 0x1: return 0x2;
+        case 0x2: return 0x2;
+        case 0x3: return 0x0;
+        case 0x4: return 0x4;
         case 0x5: return 0x5;
         case 0x6: return 0x6;
         case 0x7: return 0x7;
-        case 0x8: return 0x8;
         default:  return 0x0;
     }
 }

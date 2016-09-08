@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <assert.h>
 
-#include "max11101.h"
+#include "max1110X.h"
 
 Max1110X::Max1110X (uint8_t cs_pin, uint8_t resolution)
 {

@@ -20,7 +20,7 @@ ADG408::ADG408 (uint8_t en_pin, uint8_t a0_pin, uint8_t a1_pin, uint8_t a2_pin)
     digitalWrite(this->config.a2_pin, 0);
 }
 
-void ADG408::selectChannel (uint8_t ichan)
+void ADG408::setChannel (uint8_t ichan)
 {
     ichan = ichan & 0x7;
 

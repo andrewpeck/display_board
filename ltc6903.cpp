@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <assert.h>
-#include "ltc6903.h" 
+#include "ltc6903.h"
 
 //----------------------------------------------------------------------------------------------------------------------
 // Public
@@ -35,12 +35,12 @@ void LTC6903::disable()
 
 uint16_t LTC6903::buildWord (uint8_t oct, uint8_t dac)
 {
-    uint16_t word; 
+    uint16_t word;
     word  = this->config.cnf;
     word |= (0x3ff & dac) << 3;
     word |= (  0xf & oct) << 12;
 
-    return word; 
+    return word;
 }
 
 void LTC6903::setFrequency(uint8_t oct, uint8_t dac)
@@ -96,7 +96,7 @@ uint8_t LTC6903::generateDac (uint32_t frequency, uint8_t oct)
     }
     uint8_t dac = 2048 - exp/frequency;
 
-    return dac; 
+    return dac;
 }
 
 uint8_t LTC6903::generateOct (uint32_t frequency)

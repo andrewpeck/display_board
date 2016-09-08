@@ -1,16 +1,16 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <assert.h>
-#include "ad5672R.h"
+#include "ad567XR.h"
 
 AD567XR::AD567XR (
             uint8_t gain,
-            uint8_t resolution,
             uint8_t gain_select_pin,
             uint8_t sync_pin,
             uint8_t reset_pin,
             float   vref,
-            bool    software_ldac
+            bool    software_ldac,
+            uint8_t resolution
         )
 {
     this->config.gain            = gain;
@@ -35,9 +35,9 @@ void AD567XR::setValue      (uint8_t channel, uint16_t value)
 {
     uint32_t packet = buildPacket(CMD_WRITE_AND_LOAD_DAC, channel, value);
     digitalWrite(this->config.sync_pin, LOW);
-    SPI.transfer((packet >> 16) & 0xFF); 
-    SPI.transfer((packet >>  8) & 0xFF); 
-    SPI.transfer((packet >>  0) & 0xFF); 
+    SPI.transfer((packet >> 16) & 0xFF);
+    SPI.transfer((packet >>  8) & 0xFF);
+    SPI.transfer((packet >>  0) & 0xFF);
     digitalWrite(this->config.sync_pin, HIGH);
 }
 
@@ -69,7 +69,7 @@ uint32_t AD567XR::buildPacket   (uint8_t command, uint8_t address, uint16_t data
         | (0xf    & address) << (16)
         | (0xffff & data   ) << (0);
 
-    return packet; 
+    return packet;
 }
 
 uint16_t AD567XR::maxDacCounts ()
