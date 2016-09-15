@@ -3,7 +3,7 @@
 #include <assert.h>
 #include "ad567XR.h"
 
-AD567XR::AD567XR (
+void AD567XR::initialize (
             uint8_t gain,
             uint8_t gain_select_pin,
             uint8_t sync_pin,
@@ -22,23 +22,26 @@ AD567XR::AD567XR (
     this->config.gain_select_pin = gain_select_pin;
     this->config.reset_pin       = reset_pin;
 
-    pinMode(this->config.gain_select_pin , OUTPUT);
-    pinMode(this->config.sync_pin        , OUTPUT);
-    pinMode(this->config.reset_pin       , OUTPUT);
+    pinMode(config.gain_select_pin , OUTPUT);
+    pinMode(config.sync_pin        , OUTPUT);
+    pinMode(config.reset_pin       , OUTPUT);
 
-    digitalWrite(this->config.gain_select_pin, 0x1&(gain)); // gain is either 0 or 1 (meaning 1 or 2..)
-    digitalWrite(this->config.reset_pin,       0x0);        // startup reset
-    digitalWrite(this->config.sync_pin,        0x1);        // startup inactive
+    disable();  // startup reset
+    deselect(); // startup with cs inactive
+    setGain(gain);
 }
 
 void AD567XR::setValue      (uint8_t channel, uint16_t value)
 {
+    // SerialUSB.println("building packet");
     uint32_t packet = buildPacket(CMD_WRITE_AND_LOAD_DAC, channel, value);
-    digitalWrite(this->config.sync_pin, LOW);
+    SPI.setDataMode(SPI_MODE2);
+    // SerialUSB.println("packet built");
+    select();
     SPI.transfer((packet >> 16) & 0xFF);
     SPI.transfer((packet >>  8) & 0xFF);
     SPI.transfer((packet >>  0) & 0xFF);
-    digitalWrite(this->config.sync_pin, HIGH);
+    deselect();
 }
 
 void AD567XR::setVoltage    (uint8_t channel, float voltage)
@@ -63,6 +66,11 @@ uint32_t AD567XR::buildPacket   (uint8_t command, uint8_t address, uint16_t data
     if (this->config.resolution==12)
         data = (0xfff & data) << (4);
 
+
+    // SerialUSB.println(command, HEX);
+    // SerialUSB.println(address, HEX);
+    // SerialUSB.println(data>>4, DEC);
+
     /* construct 24 bit data packet */
     uint32_t packet =
           (0xf    & command) << (20)
@@ -74,5 +82,35 @@ uint32_t AD567XR::buildPacket   (uint8_t command, uint8_t address, uint16_t data
 
 uint16_t AD567XR::maxDacCounts ()
 {
-    return ((0x2<<this->config.resolution)-1);
+    return ((0x1<<this->config.resolution)-1);
+}
+
+void AD567XR::enable()
+{
+    digitalWrite(this->config.reset_pin, HIGH);
+}
+
+void AD567XR::disable()
+{
+    digitalWrite(this->config.reset_pin, LOW);
+}
+
+void AD567XR::select()
+{
+    digitalWrite(this->config.sync_pin, LOW);
+}
+
+void AD567XR::deselect()
+{
+    digitalWrite(this->config.sync_pin, HIGH);
+}
+
+void AD567XR::setGain(uint8_t gain)
+{
+    if (gain==2) {
+        digitalWrite(this->config.gain_select_pin, HIGH);
+    }
+    else {
+        digitalWrite(this->config.gain_select_pin, LOW);
+    }
 }

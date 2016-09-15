@@ -9,18 +9,18 @@
 
 LTC6903::LTC6903 (uint8_t sen_pin, uint8_t oe_pin, bool clk_enable, bool clk_bar_enable)
 {
-    this->config.sen_pin = sen_pin;
-    this->config.oe_pin  = oe_pin;
-    this->config.clk_enable  = clk_enable;
-    this->config.clk_bar_enable  = clk_bar_enable;
+    this->config.sen_pin        = sen_pin;
+    this->config.oe_pin         = oe_pin;
+    this->config.clk_enable     = clk_enable;
+    this->config.clk_bar_enable = clk_bar_enable;
 
     this->config.cnf = generateCnf (clk_enable, clk_bar_enable);
 
-    pinMode(this->config.oe_pin,  OUTPUT);
-    pinMode(this->config.sen_pin, OUTPUT);
+    pinMode(oe_pin,  OUTPUT);
+    pinMode(sen_pin, OUTPUT);
 
-    digitalWrite(this->config.oe_pin,  0);
-    digitalWrite(this->config.sen_pin, 1);
+    digitalWrite (oe_pin,  0);
+    digitalWrite (sen_pin, 1);
 }
 
 void LTC6903::enable()
@@ -46,6 +46,7 @@ uint16_t LTC6903::buildWord (uint8_t oct, uint8_t dac)
 void LTC6903::setFrequency(uint8_t oct, uint8_t dac)
 {
     // we should enable this here... no reason to be writing frequency if it is off.
+    // there might be a smarter way to do this (s/w bookkeeping)
     digitalWrite(this->config.oe_pin, 1);
 
     uint16_t word = buildWord(oct, dac);
@@ -72,7 +73,7 @@ uint8_t LTC6903::generateCnf (bool clk_enable, bool clk_bar_enable)
     }
 }
 
-uint8_t LTC6903::generateDac (uint32_t frequency, uint8_t oct)
+uint8_t LTC6903::generateDac (uint32_t frequency, uint8_t oct) // cf. datasheet
 {
     uint64_t exp;
     switch (oct) {
@@ -99,7 +100,7 @@ uint8_t LTC6903::generateDac (uint32_t frequency, uint8_t oct)
     return dac;
 }
 
-uint8_t LTC6903::generateOct (uint32_t frequency)
+uint8_t LTC6903::generateOct (uint32_t frequency) // cf. datasheet
 {
     if      (frequency <     1039) return  (-1);
     else if (frequency <     2076) return (0x0);

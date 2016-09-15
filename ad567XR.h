@@ -8,26 +8,32 @@ class AD567XR {
     public:
 
         //--------------------------------------------------------------------------------------------------------------
-        // Constructor
-        //--------------------------------------------------------------------------------------------------------------
-
-        AD567XR (
-                uint8_t gain            = 1,
-                uint8_t gain_select_pin = -1,
-                uint8_t sync_pin        = -1,
-                uint8_t reset_pin       = -1,
-                float   vref            = 4.096f,
-                bool    software_ldac   = false, 
-                uint8_t resolution      = 12
-                );
-
-        //--------------------------------------------------------------------------------------------------------------
         // Public Functions
         //--------------------------------------------------------------------------------------------------------------
 
         void     setValue         (uint8_t channel, uint16_t value);
         void     setVoltage       (uint8_t channel, float    voltage);
         void     setResolution    (uint8_t resolution); 
+
+        void      enable();
+        void     disable();
+
+        void       select();
+        void     deselect();
+
+        void     setGain(uint8_t gain);
+
+    protected:
+
+        void initialize (
+            uint8_t gain,
+            uint8_t gain_select_pin,
+            uint8_t sync_pin,
+            uint8_t reset_pin,
+            float   vref,
+            bool    software_ldac,
+            uint8_t resolution
+        );
 
     private:
 
@@ -78,29 +84,37 @@ class AD567XR {
 };
 
 
+
+
 class AD5672R : public AD567XR {
-    public: 
+    public:
         AD5672R (
-                uint8_t gain            = 1,
+                uint8_t gain            =  2,
                 uint8_t gain_select_pin = -1,
                 uint8_t sync_pin        = -1,
                 uint8_t reset_pin       = -1,
                 float   vref            = 4.096f,
                 bool    software_ldac   = false
-                ) : AD567XR (gain, gain_select_pin, sync_pin, reset_pin, vref, software_ldac, 12) {}  // 12 bit version
-}; 
+        ) : AD567XR ()
+        {
+        initialize (gain, gain_select_pin, sync_pin, reset_pin, vref, software_ldac, 12);     // 12 bit version
+        }
+};
 
 class AD5676R : public AD567XR {
     public: 
         AD5676R (
-                uint8_t gain            = 1,
+                uint8_t gain            =  2,
                 uint8_t gain_select_pin = -1,
                 uint8_t sync_pin        = -1,
                 uint8_t reset_pin       = -1,
                 float   vref            = 4.096f,
                 bool    software_ldac   = false
-                ) : AD567XR (gain, gain_select_pin, sync_pin, reset_pin, vref, software_ldac, 16) {}  // 16 bit version
-}; 
+        ) : AD567XR ()
+        {             
+            initialize (gain, gain_select_pin, sync_pin, reset_pin, vref, software_ldac, 16);        // 16 bit version
+        } 
+};
 
 //----------------------------------------------------------------------------------------------------------------------
 #endif /* AD567XR_H */
