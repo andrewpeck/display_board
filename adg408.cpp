@@ -9,6 +9,8 @@ ADG408::ADG408 (uint8_t en_pin, uint8_t a0_pin, uint8_t a1_pin, uint8_t a2_pin)
     this->config.a1_pin=a1_pin;
     this->config.a2_pin=a2_pin;
 
+    digitalWrite(en_pin, HIGH);
+
     pinMode(en_pin, OUTPUT);
     pinMode(a0_pin, OUTPUT);
     pinMode(a1_pin, OUTPUT);
@@ -29,10 +31,12 @@ void ADG408::setChannel (uint8_t ichan)
 
 void ADG408::enable()
 {
+    pinMode     (this->config.en_pin, OUTPUT);
     digitalWrite(this->config.en_pin, HIGH);
 }
 
 void ADG408::disable()
 {
+    pinMode     (this->config.en_pin, OUTPUT);
     digitalWrite(this->config.en_pin, LOW);
 }

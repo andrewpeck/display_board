@@ -139,7 +139,7 @@ class Controller {
         AD5672R  dac  ;
         ADG408   sw   ;
         LTC6903  dds  ;
-        CleO     cleo ;
+        CleOCtrl cleo ;
 
 };
 

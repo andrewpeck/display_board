@@ -33,10 +33,12 @@ void AD567XR::initialize (
 
 void AD567XR::setValue      (uint8_t channel, uint16_t value)
 {
-    // SerialUSB.println("building packet");
-    uint32_t packet = buildPacket(CMD_WRITE_AND_LOAD_DAC, channel, value);
+    /* KEEP THIS HERE */
     SPI.setDataMode(SPI_MODE2);
-    // SerialUSB.println("packet built");
+    /* We want to build the packet before setting chip-select to introduce some small delay... */
+
+    uint32_t packet = buildPacket(CMD_WRITE_AND_LOAD_DAC, channel, value);
+    
     select();
     SPI.transfer((packet >> 16) & 0xFF);
     SPI.transfer((packet >>  8) & 0xFF);

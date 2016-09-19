@@ -15,7 +15,7 @@ uint16_t Max1110X::readAdc ()
 
     deselect();
 
-    uint16_t value =bitmask() & ((b1<<8) | (b2<<0));
+    uint16_t value = bitmask() & ((b1<<8) | (b2<<0));
 
 //    SerialUSB.print("\n");
 //    SerialUSB.print("b0  ");
@@ -31,7 +31,6 @@ uint16_t Max1110X::readAdc ()
 //    SerialUSB.print(value);
 
 //    SerialUSB.print("\n");
-
 
     return (value);
 }
@@ -65,7 +64,7 @@ void Max1110X::deselect()
 
 uint16_t Max1110X::bitmask()
 {
-    return (this->config.resolution==14 ? 0x3fff : 0xffff);
+    return (this->config.resolution==14 ? 0xfffc : 0xffff);
 }
 
 void Max1110X::initialize(uint8_t cs_pin, uint8_t resolution)
