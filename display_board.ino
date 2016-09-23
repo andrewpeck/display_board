@@ -18,6 +18,18 @@ Controller controller;
 int screenWidth = 480, screenHeight = 320;
 int windowWidth = 240, windowHeight = 320;
 
+
+int bounding_margin = 20;
+uint32_t keypad_taglist=0;
+
+uint16_t voltage_max [2] = {0,0};
+uint16_t current_max [2] = {0,0};
+uint16_t voltage_min [2] = {0,0};
+
+float max_voltage_scaler = 1.1;
+float min_voltage_scaler = 0.9;
+float max_current_scaler = 1.1;
+
 bool keypad_enabled [2] = {0,0};
 
 uint32_t keypad_color       = MY_PURPLE;
@@ -78,23 +90,43 @@ float radians  = 0;
 
 int last_dur = 0;
 
-int   short_high_cnt       = 0;
-int   short_low_cnt        = 0;
+uint8_t   short_high_cnt       = 0;
+uint8_t   short_low_cnt        = 0;
 bool  short_press_allow    = 0;
 bool  short_press_detected = 0;
 
-int   long_high_cnt       = 0;
-int   long_low_cnt        = 0;
+uint8_t   long_high_cnt       = 0;
+uint8_t   long_low_cnt        = 0;
 bool  long_press_allow    = 0;
 bool  long_press_detected = 0;
 
 int16_t x, y, dur, current_tag;
 
-int set_voltage [2] = {0,0};
-int set_current [2] = {0,0};
+uint16_t max_voltage = 0;
+uint16_t max_current = 0;
 
-int set_voltage_buffer [2] = {0,0};
-int set_current_buffer [2] = {0,0};
+uint16_t set_voltage [2]      = {0,0};
+uint16_t set_current [2]      = {0,0};
+
+uint16_t read_voltage [2]      = {0,0};
+uint16_t read_current [2]      = {0,0};
+
+const int num_readings = 10;
+uint16_t read_voltage_arr [2][num_readings];
+uint16_t read_current_arr [2][num_readings];
+uint8_t  read_index = 0;
+uint32_t read_voltage_total [2];
+uint16_t read_voltage_average[2];
+uint32_t read_current_total [2];
+uint16_t read_current_average[2];
+
+uint16_t last_set_voltage [2] = {0,0};
+uint16_t last_set_current [2] = {0,0};
+
+uint16_t set_voltage_buffer [2] = {0,0}; // set voltage (in VOLTS)
+uint16_t set_current_buffer [2] = {0,0}; // set current (in CENTI-amps !!)
+
+uint16_t adc_fast_reading [8];
 
 bool voltage_set_mode = 0;
 bool current_set_mode = 0;
@@ -103,16 +135,24 @@ int tag_powers   [2] = {tag_power0, tag_power1};
 int tag_currents [2] = {tag_current0, tag_current1};
 int tag_voltages [2] = {tag_voltage0, tag_voltage1};
 
-uint8_t cursor_index  = 0;
-uint8_t decimal_index = 1;
+uint8_t cursor_index     = 0;
+uint8_t decimal_index    = 1;
+uint8_t decimal_position = 2;
 
 char set_voltage_str       [] = "    V";
-char set_current_str       [] = "   mA";
+char set_current_str       [] = "00.0mA";
 
 char set_voltage_highlight [] = "    V";
-char set_current_highlight [] = "   mA";
+char set_current_highlight [] = "00.0mA";
 
 void setup () {
+
+    for (int i=0; i<num_readings; i++) {
+        read_voltage_arr [0][i] = 0;
+        read_voltage_arr [1][i] = 0;
+        read_current_arr [0][i] = 0;
+        read_current_arr [1][i] = 0;
+    }
 
     controller.enableDac();
     controller.enableSwitch();
@@ -123,16 +163,11 @@ void setup () {
     pinMode(10, OUTPUT);
     pinMode(13, INPUT);
 
-    // digitalWrite(10, HIGH);
-    // delay(1);
     digitalWrite(10, LOW);
 
     SerialUSB.begin(0);
 
-    //while (!Serial) { };
-
     digitalWrite(10, HIGH);
-    // digitalWrite(10, LOW);
 
     SerialUSB.println("UCLA Analog Display Board");
 
@@ -171,17 +206,23 @@ int last_time =0;
 
 void loop () {
 
-    if (current_tag!=0 && current_tag!=255) {
-        SerialUSB.print("tag: ");
-        SerialUSB.print(current_tag);
-        SerialUSB.print(" dur: ");
-        SerialUSB.print(dur);
-        SerialUSB.print(" x: ");
-        SerialUSB.print(x);
-        SerialUSB.print(" y: ");
-        SerialUSB.print(y);
-        SerialUSB.print("\n");
-    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Diagnostic Printouts
+    //------------------------------------------------------------------------------------------------------------------
+
+    if (1==0)
+        if (current_tag!=0 && current_tag!=255) {
+            SerialUSB.print("tag: ");
+            SerialUSB.print(current_tag);
+            SerialUSB.print(" dur: ");
+            SerialUSB.print(dur);
+            SerialUSB.print(" x: ");
+            SerialUSB.print(x);
+            SerialUSB.print(" y: ");
+            SerialUSB.print(y);
+            SerialUSB.print("\n");
+        }
 
     if (counter==0) {SerialUSB.println("starting loop");};
 
@@ -193,13 +234,13 @@ void loop () {
 
         last_time = millis();
 
-                    for (int panel=0; panel<2; panel++) {
-                    SerialUSB.print("panel ");
-                    SerialUSB.print(panel);
-                    SerialUSB.print(" voltage is set to ");
-                    SerialUSB.print(set_voltage[panel]);
-                    SerialUSB.print("\n");
-                    }
+        for (int panel=0; panel<2; panel++) {
+            SerialUSB.print("panel ");
+            SerialUSB.print(panel);
+            SerialUSB.print(" voltage is set to ");
+            SerialUSB.print(set_voltage[panel]);
+            SerialUSB.print("\n");
+        }
 
         // ovp_ok = !ovp_ok;
         // ovc_ok = !ovc_ok;
@@ -207,20 +248,124 @@ void loop () {
 
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    // Read ADCs
+    //------------------------------------------------------------------------------------------------------------------
 
-    if ((counter%50)==0) {
+    for (int i=0; i<8; i++) {
+        adc_fast_reading[i] = controller.readArduinoAdc(i);
+    }
+    for (int i=0; i<2; i++) {
+        read_voltage[i] = adc_fast_reading[i];
+        read_current[i] = adc_fast_reading[i+2];
 
-        for (int ichan=0; ichan<2; ichan++) {
-            controller.writeDac(ichan, output_on[ichan] * (int) set_voltage[ichan%2] * 1.5 );
-                    SerialUSB.print("setting dac ");
-                    SerialUSB.print(ichan);
-                    SerialUSB.print(" to ");
-                    SerialUSB.print((int) set_voltage[ichan%2]*1.5);
-                    SerialUSB.print("\n");
-        }
+        read_voltage_arr[i][read_index] = adc_fast_reading[i];
+        read_current_arr[i][read_index] = adc_fast_reading[i+2];
+
+        read_voltage_total[i] =read_voltage_total[i] - read_voltage_arr [i][read_index] + read_voltage[i];
+        read_current_total[i] =read_current_total[i] - read_current_arr [i][read_index] + read_current[i];
+
+        read_voltage_average[i] = read_voltage_total[i]/num_readings;
+        read_current_average[i] = read_current_total[i]/num_readings;
+
+    }
+    read_index++;
+    if (read_index >= num_readings) {
+    read_index = 0;
     }
 
+
+
+    checkMinMax();
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Update DAC
+    //------------------------------------------------------------------------------------------------------------------
+
+    if (counter%1==0) {
+        updateDacs();
+    }
+
+
+    if (counter%5==0) {
+        updateScreen();
+    }
+
+    updateMinMax();
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Increment Loop Counter
+    //------------------------------------------------------------------------------------------------------------------
+
+    counter++;
+}
+
+void checkMinMax()
+{
+    for (int panel=0; panel<2; panel++) {
+
+        if (read_voltage[panel] > voltage_max[panel])
+            ovp_ok = 0;
+        if (read_voltage[panel] < voltage_min[panel])
+            ovp_ok = 0;
+        else
+            ovp_ok = 1;
+        //------------------------------------------------------------------------------------------------------------------
+        if (read_current[panel] > current_max[panel])
+            ovc_ok = 0;
+        else
+            ovc_ok = 1;
+
+    }
+}
+
+void updateMinMax()
+{
+    for (int panel=0; panel<2; panel++) {
+        voltage_max[panel] = set_voltage[panel] * max_voltage_scaler;
+
+        current_max[panel] = set_current[panel] * max_current_scaler;
+
+        voltage_min[panel] = set_voltage[panel] * min_voltage_scaler;
+    }
+
+}
+
+void updateDacs()
+{
+    for (int ichan=0; ichan<2; ichan++) {
+        if (!output_on[ichan]) { // turn off the output if the output is off. duh!
+            controller.writeDac(ichan, 0);
+        }
+        else if (set_voltage[ichan]!=last_set_voltage[ichan]) { // no point in re-writing the same voltage on the dac
+
+            int voltage = (int) set_voltage[ichan%2] * 1.5;
+
+            last_set_voltage[ichan]=set_voltage[ichan];
+
+            SerialUSB.print("setting dac ");
+            SerialUSB.print(ichan);
+            SerialUSB.print(" to ");
+            SerialUSB.print(voltage);
+            SerialUSB.print("\n");
+
+            controller.writeDac(ichan, voltage);
+        }
+    }
+}
+
+void updateScreen()
+{
+    //------------------------------------------------------------------------------------------------------------------
+    // Start Drawing Screen
+    //------------------------------------------------------------------------------------------------------------------
+
     CleO.Start();
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Build Keypads / Status Screens
+    //------------------------------------------------------------------------------------------------------------------
+
     CleO.RectangleJustification(MM);
     CleO.LineColor(line_color);
 
@@ -250,80 +395,19 @@ void loop () {
 
     // long press for power and opening the keypad
     if (long_press_detected) {
-
-        for (int panel=0; panel<2; panel++) {
-            if (current_tag==tag_powers[panel]) {
-                output_on[panel] = !output_on[panel];
-            }
-            else if (current_tag==tag_voltages[panel] && !current_set_mode) // can't switch
-            {
-                SerialUSB.println("Toggling Voltage Set Mode");
-                keypad_enabled[panel] = !keypad_enabled[panel];
-                voltage_set_mode      = !voltage_set_mode;
-
-                // update the set voltage when we leave set mode; keep the value in a buffer before that
-                if (!voltage_set_mode) {
-                    set_voltage[panel] = set_voltage_buffer[panel];
-                    SerialUSB.print("Setting panel ");
-                    SerialUSB.print(panel);
-                    SerialUSB.print(" voltage to ");
-                    SerialUSB.print(set_voltage[panel]);
-                    SerialUSB.print("\n");
-                }
-
-                cursor_index          = 0;
-            }
-            else if (current_tag==tag_currents[panel] && !voltage_set_mode)
-            {
-                SerialUSB.println("Toggling Current Set Mode");
-                keypad_enabled[panel] = !keypad_enabled[panel];
-                current_set_mode      = !current_set_mode;
-                cursor_index          = 0;
-
-                // update the set current when we leave set mode; keep the value in a buffer before that
-                if (!current_set_mode) {
-                    set_current[panel] = set_current_buffer[panel]; 
-                    SerialUSB.print("Setting panel ");
-                    SerialUSB.print(panel);
-                    SerialUSB.print(" current to ");
-                    SerialUSB.print(set_current[panel]);
-                }
-            }
-        }
+        processLongPress();
     }
 
     // short presses are OK for keypad touches
     else if (short_press_detected && (keypad_enabled[0] || keypad_enabled[1])) {
-        switch (current_tag) {
-            case tag_0     : setValue(0x0, 0x1&keypad_enabled[1]) ; break ;
-            case tag_1     : setValue(0x1, 0x1&keypad_enabled[1]) ; break ;
-            case tag_2     : setValue(0x2, 0x1&keypad_enabled[1]) ; break ;
-            case tag_3     : setValue(0x3, 0x1&keypad_enabled[1]) ; break ;
-            case tag_4     : setValue(0x4, 0x1&keypad_enabled[1]) ; break ;
-            case tag_5     : setValue(0x5, 0x1&keypad_enabled[1]) ; break ;
-            case tag_6     : setValue(0x6, 0x1&keypad_enabled[1]) ; break ;
-            case tag_7     : setValue(0x7, 0x1&keypad_enabled[1]) ; break ;
-            case tag_8     : setValue(0x8, 0x1&keypad_enabled[1]) ; break ;
-            case tag_9     : setValue(0x9, 0x1&keypad_enabled[1]) ; break ;
-            case tag_point : setDecimalPoint()                  ; break ;
-            case tag_left  : moveCursorLeft()                   ; break ;
-            case tag_right : moveCursorRight()                  ; break ;
-        }
+        processShortPress();
     }
-
 
     //------------------------------------------------------------------------------------------------------------------
     // Update Screen
     //------------------------------------------------------------------------------------------------------------------
 
     CleO.Show();
-
-
-    //------------------------------------------------------------------------------------------------------------------
-    // Increment Loop Counter
-    //------------------------------------------------------------------------------------------------------------------
-
-    counter++;
 }
 
 void setDecimalPoint()
@@ -332,15 +416,19 @@ void setDecimalPoint()
 
 void moveCursorLeft()
 {
+    if (current_set_mode && cursor_index==3) // skip the decimal place
+        cursor_index--;
+
     if (cursor_index>0)
         cursor_index--;
 }
 
 void moveCursorRight()
 {
-    int max=2;
-    if (voltage_set_mode)
-        max=3;
+    int max=3;
+
+    if (current_set_mode && cursor_index==1) // skip the decimal place
+        cursor_index++;
 
     if (cursor_index<max)
         cursor_index++;
@@ -364,7 +452,20 @@ void setValue (uint8_t value, uint8_t panel)
         SerialUSB.print(thischar[0]);
         SerialUSB.print("\n" );
 
+        SerialUSB.print("Old string ");
+        SerialUSB.print(set_voltage_str);
+        SerialUSB.print("\n");
+
+        SerialUSB.print("Cursor index ");
+        SerialUSB.print(cursor_index);
+        SerialUSB.print("\n");
+
         set_voltage_str[cursor_index] = thischar[0]; // swap this index
+
+        SerialUSB.print("New string ");
+        SerialUSB.print(set_voltage_str);
+        SerialUSB.print("\n");
+
         set_voltage_buffer[panel]     = strtol(set_voltage_str, &end, 10); // convert to value
 
         SerialUSB.print("Setting voltage buffer to ");
@@ -374,8 +475,15 @@ void setValue (uint8_t value, uint8_t panel)
         moveCursorRight();
     }
     else if (current_set_mode) {
-        set_current_str[cursor_index] = thischar[0];
-        set_current_buffer[panel]     = strtol(set_current_str, &end, 10);
+
+        set_current_str[cursor_index]     = thischar[0];
+        set_current_str[decimal_position] = ' '; // convert the decimal to a space so strol will parse it as two numbers
+
+        char* end;
+        int characteristic        = strtol(set_current_str, &end, 10);
+        int mantissa              = strtol(end,             &end, 10);
+
+        set_current_buffer[panel] = 10*characteristic + mantissa;
 
         SerialUSB.print("Setting current buffer to ");
         SerialUSB.print(set_current_buffer[panel]);
@@ -437,9 +545,9 @@ void buildStatus (int panel)
     // Update Text
     //------------------------------------------------------------------------------------------------------------------
 
-    int mv = (33000 * controller.readArduinoAdc(panel)) / (65535); // rescale to millivolts, 0-5000
+    int mv = (33000 * read_voltage_average[panel]) / (65535); // rescale to millivolts, 0-5000
 
-    int ma = (33000 * controller.readArduinoAdc(panel)) / (65535); // rescale to millivolts, 0-5000
+    int ma = (33000 * read_current_average[panel]) / (65535); // rescale to millivolts, 0-5000
 
     //SerialUSB.println(mv);
     char buf_volts[10];
@@ -474,19 +582,24 @@ void buildStatus (int panel)
 
     if (keypad_enabled[panel] && (voltage_set_mode || current_set_mode) ) {
 
-        if (voltage_set_mode) set_voltage_str[cursor_index] = ' ';
-        if (current_set_mode) set_current_str[cursor_index] = ' ';
 
-        for (int i=0; i<5; i++) {
-            if (i!=cursor_index) {
-                if (voltage_set_mode) set_voltage_highlight[i] = ' ';
-                if (current_set_mode) set_current_highlight[i] = ' ';
+        for (int i=0; i<(4+current_set_mode); i++) { // current_set_mode string is 1 character longer
+            if (i==cursor_index) {
+                set_voltage_highlight[i] = set_voltage_str[cursor_index];
+                set_current_highlight[i] = set_current_str[cursor_index];
+            }
+            else {
+                set_voltage_highlight[i] = ' ';
+                if (i!=decimal_position) set_current_highlight[i] = ' ';
             }
         }
 
+        if (voltage_set_mode) set_voltage_str[cursor_index] = ' ';
+        if (current_set_mode) set_current_str[cursor_index] = ' ';
 
-        if (voltage_set_mode) CleO.StringExt(FONT_VGA_16 , 60  + x_offset , 200 , touch_color , MM , 0 , 0 , set_voltage_highlight); // voltage set
-        if (current_set_mode) CleO.StringExt(FONT_VGA_16 , 180 + x_offset , 200 , touch_color , MM , 0 , 0 , set_current_highlight); // current set
+
+        if      (voltage_set_mode) CleO.StringExt(FONT_VGA_16 , 60  + x_offset , 200 , touch_color , MM , 0 , 0 , set_voltage_highlight); // voltage set
+        else if (current_set_mode) CleO.StringExt(FONT_VGA_16 , 180 + x_offset , 200 , touch_color , MM , 0 , 0 , set_current_highlight); // current set
     }
 
     CleO.StringExt(FONT_VGA_16 , 60  + x_offset , 200 , display_text_color , MM , 0 , 0 , set_voltage_str); // voltage set
@@ -495,68 +608,68 @@ void buildStatus (int panel)
 }
 
 void updateSetStrings (uint8_t panel) {
-    sprintf(set_voltage_str,         "%04dV",   set_voltage_buffer[panel]);
-    sprintf(set_current_str,         "%03dmA",  set_current_buffer[panel]);
 
-    sprintf(set_voltage_highlight,   "%04dV",   set_voltage_buffer[panel]);
-    sprintf(set_current_highlight,   "%03dmA",  set_current_buffer[panel]);
+    // need to breakdown the set current for decimal representation
+    int characteristic = set_current_buffer[panel] / 10;
+    int mantissa       = set_current_buffer[panel] % 10;
+
+    sprintf(set_voltage_str,         "%04luV",        set_voltage_buffer[panel]);
+    sprintf(set_current_str,         "%02lu.%01lumA",  characteristic, mantissa);
 }
 
 void processButtons () { 
+
     CleO.TouchCoordinates(x, y, dur, current_tag);
 
     // manual tagging for >14 --- the software is REALLY buggy otherwise
     if (current_tag > 13)  {
         for (int window=0; window<2; window++) {
-            if (!keypad_enabled[!window]) { // We DONT want to parse this screen as buttons if the other side is using it as a keypad
-                if (y>160 && x<240+window*windowWidth) {  // then we are in the right region
+            if (!keypad_enabled[!window] && y>160 && x<240+window*windowWidth) { // We DONT want to parse this screen as buttons if the other side is using it as a keypad
 
-                    //--------------------------------------------------------------------------------------------------
-                    // Voltage Set Mode
-                    //--------------------------------------------------------------------------------------------------
+                //--------------------------------------------------------------------------------------------------
+                // Voltage Set Mode
+                //--------------------------------------------------------------------------------------------------
 
-                    //  top         left     right       bottom
-                    if (      y > 160+10
-                            &&    y < 240-10
-                            &&    x > window*windowWidth + 0+10
-                            &&    x < window*windowWidth + 120-10 
-                       )
-                    {
-                        current_tag = tag_voltages[window];
-                    }
+                //  top         left     right       bottom
+                if (      y > 160+10
+                        &&    y < 240-10
+                        &&    x > window*windowWidth + 0+10
+                        &&    x < window*windowWidth + 120-10 
+                   )
+                {
+                    current_tag = tag_voltages[window];
+                }
 
-                    //--------------------------------------------------------------------------------------------------
-                    // Current Set Mode
-                    //--------------------------------------------------------------------------------------------------
+                //--------------------------------------------------------------------------------------------------
+                // Current Set Mode
+                //--------------------------------------------------------------------------------------------------
 
-                    else if (
-                            y > 160+10
-                            && y < 240-10
-                            && x > window*windowWidth+120 +10
-                            && x < window*windowWidth+240-10
-                            )
-                    {
-                        current_tag = tag_currents[window];
-                    }
+                else if (
+                        y > 160+10
+                        && y < 240-10
+                        && x > window*windowWidth+120 +10
+                        && x < window*windowWidth+240-10
+                        )
+                {
+                    current_tag = tag_currents[window];
+                }
 
-                    //--------------------------------------------------------------------------------------------------
-                    // Power Toggle
-                    //--------------------------------------------------------------------------------------------------
+                //--------------------------------------------------------------------------------------------------
+                // Power Toggle
+                //--------------------------------------------------------------------------------------------------
 
-                    else if (
-                            y > 240+10
-                            && x >  window*windowWidth + 0  +10
-                            && x <  window*windowWidth + 120-10
-                            && y < 320-10
-                            )
-                    {
-                        current_tag = tag_powers[window];
-                    }
+                else if (
+                        y > 240+10
+                        && x >  window*windowWidth + 0  +10
+                        && x <  window*windowWidth + 120-10
+                        && y < 320-10
+                        )
+                {
+                    current_tag = tag_powers[window];
                 }
             }
         }
     }
-
 
     // press (1  , &short_high_cnt , &short_low_cnt , &short_press_allow , &short_press_detected);
     shortPress (&short_press_detected);
@@ -577,7 +690,7 @@ void shortPress (bool *press_detected)
 
 }
 
-void press (int debounce_time, int *high_cnt, int *low_cnt, bool *press_allow, bool *press_detected)
+void press (uint8_t debounce_time, uint8_t *high_cnt, uint8_t *low_cnt, bool *press_allow, bool *press_detected)
 {
     if (dur==1 && last_dur==1 && *press_allow) {
         *high_cnt += 1;
@@ -603,9 +716,6 @@ void press (int debounce_time, int *high_cnt, int *low_cnt, bool *press_allow, b
         *press_detected = 0;
     }
 }
-
-int bounding_margin = 20;
-uint32_t keypad_taglist=0;
 
 
 void buildKey    (int x, int y, int box_size, int tag, char* text) {
@@ -703,4 +813,65 @@ void buildKeypad (int keypad)
 
     CleO.Line(x_offset+160   , 280 , x_offset+240 , 280);
 
+}
+
+void processLongPress() {
+    for (int panel=0; panel<2; panel++) {
+        if (current_tag==tag_powers[panel]) {
+            output_on[panel] = !output_on[panel];
+        }
+        else if (current_tag==tag_voltages[panel] && !current_set_mode) // can't switch
+        {
+            SerialUSB.println("Toggling Voltage Set Mode");
+            keypad_enabled[panel] = !keypad_enabled[panel];
+            voltage_set_mode      = !voltage_set_mode;
+
+            // update the set voltage when we leave set mode; keep the value in a buffer before that
+            if (!voltage_set_mode) {
+                set_voltage[panel] = set_voltage_buffer[panel];
+                SerialUSB.print("Setting panel ");
+                SerialUSB.print(panel);
+                SerialUSB.print(" voltage to ");
+                SerialUSB.print(set_voltage[panel]);
+                SerialUSB.print("\n");
+            }
+
+            cursor_index          = 0;
+        }
+        else if (current_tag==tag_currents[panel] && !voltage_set_mode)
+        {
+            SerialUSB.println("Toggling Current Set Mode");
+            keypad_enabled[panel] = !keypad_enabled[panel];
+            current_set_mode      = !current_set_mode;
+            cursor_index          = 0;
+
+            // update the set current when we leave set mode; keep the value in a buffer before that
+            if (!current_set_mode) {
+                set_current[panel] = set_current_buffer[panel]; 
+                SerialUSB.print("Setting panel ");
+                SerialUSB.print(panel);
+                SerialUSB.print(" current to ");
+                SerialUSB.print(set_current[panel]);
+            }
+        }
+    }
+
+}
+
+void processShortPress() {
+    switch (current_tag) {
+        case tag_0     : setValue(0x0, 0x1&keypad_enabled[1]) ; break ;
+        case tag_1     : setValue(0x1, 0x1&keypad_enabled[1]) ; break ;
+        case tag_2     : setValue(0x2, 0x1&keypad_enabled[1]) ; break ;
+        case tag_3     : setValue(0x3, 0x1&keypad_enabled[1]) ; break ;
+        case tag_4     : setValue(0x4, 0x1&keypad_enabled[1]) ; break ;
+        case tag_5     : setValue(0x5, 0x1&keypad_enabled[1]) ; break ;
+        case tag_6     : setValue(0x6, 0x1&keypad_enabled[1]) ; break ;
+        case tag_7     : setValue(0x7, 0x1&keypad_enabled[1]) ; break ;
+        case tag_8     : setValue(0x8, 0x1&keypad_enabled[1]) ; break ;
+        case tag_9     : setValue(0x9, 0x1&keypad_enabled[1]) ; break ;
+        case tag_point : setDecimalPoint()                  ; break ;
+        case tag_left  : moveCursorLeft()                   ; break ;
+        case tag_right : moveCursorRight()                  ; break ;
+    }
 }
