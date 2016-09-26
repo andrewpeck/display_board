@@ -66,7 +66,7 @@ uint32_t AD567XR::buildPacket   (uint8_t command, uint8_t address, uint16_t data
 
     /* pad the right 4 LSBs with zeros for 12 bit DAC version */
     if (this->config.resolution==12)
-        data = (0xfff & data) << (4);
+        data = (0xfff0 & data);
 
 
     // SerialUSB.println(command, HEX);
@@ -84,7 +84,7 @@ uint32_t AD567XR::buildPacket   (uint8_t command, uint8_t address, uint16_t data
 
 uint16_t AD567XR::maxDacCounts ()
 {
-    return ((0x1<<this->config.resolution)-1);
+    return (1<<16-1);
 }
 
 void AD567XR::enable()
