@@ -1,4 +1,5 @@
 #include "controller.h"
+#include "high_voltage.h"
 #include <SPI.h>
 #include <CleO.h>
 
@@ -18,11 +19,12 @@ Controller controller;
 int screenWidth = 480, screenHeight = 320;
 int windowWidth = 240, windowHeight = 320;
 
+int last_time =0;
 
 int bounding_margin = 20;
 uint32_t keypad_taglist=0;
 
-uint16_t voltage_max [2] = {0,0};
+uint16_t voltage_max [2] = {0,0}; // holds the current maximum allowed voltage (in volts)
 uint16_t current_max [2] = {0,0};
 uint16_t voltage_min [2] = {0,0};
 
@@ -105,20 +107,21 @@ int16_t x, y, dur, current_tag;
 uint16_t max_voltage = 0;
 uint16_t max_current = 0;
 
-uint16_t set_voltage [2]      = {0,0};
-uint16_t set_current [2]      = {0,0};
+uint16_t set_voltage [2]      = {0,0};  // Set Voltage IN Volts
+uint16_t set_current [2]      = {0,0};  // Set Current IN Centi-Amps (10s of mA -- needed for 1 decimal place)
 
-uint16_t read_voltage [2]      = {0,0};
-uint16_t read_current [2]      = {0,0};
+uint16_t read_voltage_counts [2]      = {0,0};  // Current reading in counts
+uint16_t read_current_counts [2]      = {0,0};  // Current reading in counts
 
-const int num_readings = 10;
-uint16_t read_voltage_arr [2][num_readings];
-uint16_t read_current_arr [2][num_readings];
+//-Voltage + Current Reading Smoothing----------------------------------------------------------------------------------
+const int boxcar_size = 100;
+uint16_t read_voltage_counts_arr [2][boxcar_size];
+uint16_t read_current_counts_arr [2][boxcar_size];
 uint8_t  read_index = 0;
-uint32_t read_voltage_total [2];
-uint16_t read_voltage_average[2];
-uint32_t read_current_total [2];
-uint16_t read_current_average[2];
+uint32_t read_voltage_counts_total [2];
+uint16_t read_voltage_counts_average[2];
+uint32_t read_current_counts_total [2];
+uint16_t read_current_counts_average[2];
 
 uint16_t last_set_voltage [2] = {0,0};
 uint16_t last_set_current [2] = {0,0};
@@ -147,11 +150,11 @@ char set_current_highlight [] = "00.0mA";
 
 void setup () {
 
-    for (int i=0; i<num_readings; i++) {
-        read_voltage_arr [0][i] = 0;
-        read_voltage_arr [1][i] = 0;
-        read_current_arr [0][i] = 0;
-        read_current_arr [1][i] = 0;
+    for (int i=0; i<boxcar_size; i++) {
+        read_voltage_counts_arr [0][i] = 0;
+        read_voltage_counts_arr [1][i] = 0;
+        read_current_counts_arr [0][i] = 0;
+        read_current_counts_arr [1][i] = 0;
     }
 
     controller.enableDac();
@@ -182,7 +185,7 @@ void setup () {
     SerialUSB.println("Setting DDS Frequency");
 
     for (int ichan=0; ichan<8; ichan++) {
-        controller.writeDac(ichan, 0);
+        controller.writeDac(ichan, output_zerovolt_safe);
     }
 
     SerialUSB.println("DDS Frequency Set");
@@ -202,94 +205,81 @@ void setup () {
     font = CleO.LoadFont("@Fonts/DSEG7ClassicMini-BoldItalic.ftfont");
 }
 
-int last_time =0;
+void printCurrentTag () {
+    if (current_tag!=0 && current_tag!=255) {
+        SerialUSB.print("tag: ");
+        SerialUSB.print(current_tag);
+        SerialUSB.print(" dur: ");
+        SerialUSB.print(dur);
+        SerialUSB.print(" x: ");
+        SerialUSB.print(x);
+        SerialUSB.print(" y: ");
+        SerialUSB.print(y);
+        SerialUSB.print("\n");
+    }
+}
 
 void loop () {
-
 
     //------------------------------------------------------------------------------------------------------------------
     // Diagnostic Printouts
     //------------------------------------------------------------------------------------------------------------------
 
     if (1==0)
-        if (current_tag!=0 && current_tag!=255) {
-            SerialUSB.print("tag: ");
-            SerialUSB.print(current_tag);
-            SerialUSB.print(" dur: ");
-            SerialUSB.print(dur);
-            SerialUSB.print(" x: ");
-            SerialUSB.print(x);
-            SerialUSB.print(" y: ");
-            SerialUSB.print(y);
-            SerialUSB.print("\n");
-        }
+        printCurrentTag();
 
     if (counter==0) {SerialUSB.println("starting loop");};
 
 
     if ((counter%1000)==0) {
 
-        SerialUSB.println("beat");
-        SerialUSB.println((millis()-last_time) / 1000);
+        SerialUSB.print("milliseconds per loop: ");
+        SerialUSB.print((millis()-last_time) / 1000);
+        SerialUSB.print("\n");
 
         last_time = millis();
 
-        for (int panel=0; panel<2; panel++) {
-            SerialUSB.print("panel ");
-            SerialUSB.print(panel);
-            SerialUSB.print(" voltage is set to ");
-            SerialUSB.print(set_voltage[panel]);
-            SerialUSB.print("\n");
-        }
-
-        // ovp_ok = !ovp_ok;
-        // ovc_ok = !ovc_ok;
-        // status_ok = !status_ok;
-
+        //for (int panel=0; panel<2; panel++) {
+        //    SerialUSB.print("panel ");
+        //    SerialUSB.print(panel);
+        //    SerialUSB.print(" voltage is set to ");
+        //    SerialUSB.print(set_voltage[panel]);
+        //    SerialUSB.print("\n");
+        //}
     }
 
     //------------------------------------------------------------------------------------------------------------------
-    // Read ADCs
+    // Read ADCs with Boxcar Smoothing (sample count controlled by boxcar_size)
     //------------------------------------------------------------------------------------------------------------------
 
-    for (int i=0; i<8; i++) {
-        adc_fast_reading[i] = controller.readArduinoAdc(i);
-    }
-    for (int i=0; i<2; i++) {
-        read_voltage[i] = adc_fast_reading[i];
-        read_current[i] = adc_fast_reading[i+2];
+    fastReadAdcs();
 
-        read_voltage_arr[i][read_index] = adc_fast_reading[i];
-        read_current_arr[i][read_index] = adc_fast_reading[i+2];
-
-        read_voltage_total[i] =read_voltage_total[i] - read_voltage_arr [i][read_index] + read_voltage[i];
-        read_current_total[i] =read_current_total[i] - read_current_arr [i][read_index] + read_current[i];
-
-        read_voltage_average[i] = read_voltage_total[i]/num_readings;
-        read_current_average[i] = read_current_total[i]/num_readings;
-
-    }
-    read_index++;
-    if (read_index >= num_readings) {
-    read_index = 0;
-    }
-
-
-
+    //------------------------------------------------------------------------------------------------------------------
+    // Check if voltages and currents are within tolerance
+    //------------------------------------------------------------------------------------------------------------------
     checkMinMax();
 
     //------------------------------------------------------------------------------------------------------------------
     // Update DAC
     //------------------------------------------------------------------------------------------------------------------
 
+    // want to read ADCs fast.. but can think about skipping DAC writes
+
     if (counter%1==0) {
         updateDacs();
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    // Refresh Screen -- skip loops to avoid unnecessarily high refresh rate
+    //------------------------------------------------------------------------------------------------------------------
 
     if (counter%5==0) {
         updateScreen();
     }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Update Min/Max voltage parameters
+    //------------------------------------------------------------------------------------------------------------------
 
     updateMinMax();
 
@@ -304,17 +294,18 @@ void checkMinMax()
 {
     for (int panel=0; panel<2; panel++) {
 
-        if (read_voltage[panel] > voltage_max[panel])
+        //-max voltage------------------------------------------------------------------------------------------------------
+        if (read_voltage_counts[panel] > voltage_max[panel])
             ovp_ok = 0;
-        if (read_voltage[panel] < voltage_min[panel])
+        //-min voltage------------------------------------------------------------------------------------------------------
+        if (read_voltage_counts[panel] < voltage_min[panel])
             ovp_ok = 0;
         else
             ovp_ok = 1;
-        //------------------------------------------------------------------------------------------------------------------
-        if (read_current[panel] > current_max[panel])
-            ovc_ok = 0;
-        else
-            ovc_ok = 1;
+
+
+        //-max current------------------------------------------------------------------------------------------------------
+        ovc_ok = (read_current_counts[panel] < current_max[panel]) ? 1 : 0;
 
     }
 }
@@ -335,24 +326,59 @@ void updateDacs()
 {
     for (int ichan=0; ichan<2; ichan++) {
         if (!output_on[ichan]) { // turn off the output if the output is off. duh!
-            controller.writeDac(ichan, 0);
+            controller.writeDac(ichan, output_zerovolt_safe);
+            last_set_voltage[ichan] = 0; // make sure this gets set here, or we won't write the dac when enabling the output
         }
         else if (set_voltage[ichan]!=last_set_voltage[ichan]) { // no point in re-writing the same voltage on the dac
 
-            int voltage = (int) set_voltage[ichan%2] * 1.5;
+            uint16_t counts = voltageToDacCounts(set_voltage[ichan]);
+            uint16_t inverted_counts = invertCounts (counts);
 
             last_set_voltage[ichan]=set_voltage[ichan];
 
             SerialUSB.print("setting dac ");
             SerialUSB.print(ichan);
             SerialUSB.print(" to ");
-            SerialUSB.print(voltage);
+            SerialUSB.print(set_voltage[ichan]);
+            SerialUSB.print(" = (");
+            SerialUSB.print(inverted_counts);
+            SerialUSB.print(" inverted dac_counts) ");
+            SerialUSB.print(" , (");
+            SerialUSB.print(counts);
+            SerialUSB.print(" non-inverted dac_counts)");
             SerialUSB.print("\n");
 
-            controller.writeDac(ichan, voltage);
+            controller.writeDac(ichan, inverted_counts);
         }
     }
 }
+
+void fastReadAdcs() {
+    for (int i=0; i<8; i++) {
+        adc_fast_reading[i] = controller.readArduinoAdc(i);
+    }
+
+    for (int i=0; i<2; i++) {
+        read_voltage_counts[i] = adc_fast_reading[i];
+        read_current_counts[i] = adc_fast_reading[i+2];
+
+        read_voltage_counts_total[i] =read_voltage_counts_total[i] - read_voltage_counts_arr [i][read_index] + read_voltage_counts[i];
+        read_current_counts_total[i] =read_current_counts_total[i] - read_current_counts_arr [i][read_index] + read_current_counts[i];
+
+        read_voltage_counts_arr[i][read_index] = read_voltage_counts[i];
+        read_current_counts_arr[i][read_index] = read_current_counts[i];
+
+        read_voltage_counts_average[i] = read_voltage_counts_total[i]/boxcar_size;
+        read_current_counts_average[i] = read_current_counts_total[i]/boxcar_size;
+
+    }
+
+    read_index++;
+    if (read_index >= boxcar_size) {
+        read_index = 0;
+    }
+}
+
 
 void updateScreen()
 {
@@ -436,7 +462,7 @@ void moveCursorRight()
         cursor_index=0;
 }
 
-void setValue (uint8_t value, uint8_t panel)
+void setDigitValue (uint8_t value, uint8_t panel)
 {
     // take value
     // convert to string
@@ -545,16 +571,15 @@ void buildStatus (int panel)
     // Update Text
     //------------------------------------------------------------------------------------------------------------------
 
-    int mv = (33000 * read_voltage_average[panel]) / (65535); // rescale to millivolts, 0-5000
-
-    int ma = (33000 * read_current_average[panel]) / (65535); // rescale to millivolts, 0-5000
+    uint16_t deciVolts = countsToDeciVolts(read_voltage_counts_average[panel]);
+    uint16_t centiAmps = countsToCentiAmps(read_voltage_counts_average[panel]);
 
     //SerialUSB.println(mv);
     char buf_volts[10];
     char buf_current[10];
 
-    sprintf(buf_volts,   "%4d.%1dV",  mv / 10, mv % 10);
-    sprintf(buf_current, "%1d.%1dmA", ma / 100, ma % 100);
+    sprintf(buf_volts,   "% 4lu.%01luV",  deciVolts / 10,  deciVolts % 10);
+    sprintf(buf_current, "% 2lu.%02lumA", centiAmps / 100, centiAmps % 100);
 
     CleO.LineWidth(1);
     CleO.StringExt(FONT_SANS_3 , 80  + x_offset , 40  , display_text_color , MM , 0 , 0 , buf_volts); // voltage
@@ -607,6 +632,7 @@ void buildStatus (int panel)
 
 }
 
+
 void updateSetStrings (uint8_t panel) {
 
     // need to breakdown the set current for decimal representation
@@ -631,7 +657,7 @@ void processButtons () {
                 //--------------------------------------------------------------------------------------------------
 
                 //  top         left     right       bottom
-                if (      y > 160+10
+                if (          y > 160+10
                         &&    y < 240-10
                         &&    x > window*windowWidth + 0+10
                         &&    x < window*windowWidth + 120-10 
@@ -645,7 +671,7 @@ void processButtons () {
                 //--------------------------------------------------------------------------------------------------
 
                 else if (
-                        y > 160+10
+                           y > 160+10
                         && y < 240-10
                         && x > window*windowWidth+120 +10
                         && x < window*windowWidth+240-10
@@ -659,7 +685,7 @@ void processButtons () {
                 //--------------------------------------------------------------------------------------------------
 
                 else if (
-                        y > 240+10
+                           y > 240+10
                         && x >  window*windowWidth + 0  +10
                         && x <  window*windowWidth + 120-10
                         && y < 320-10
@@ -673,7 +699,7 @@ void processButtons () {
 
     // press (1  , &short_high_cnt , &short_low_cnt , &short_press_allow , &short_press_detected);
     shortPress (&short_press_detected);
-    press (25 , &long_high_cnt  , &long_low_cnt  , &long_press_allow  , &long_press_detected);
+    press (15 , &long_high_cnt  , &long_low_cnt  , &long_press_allow  , &long_press_detected);
 
     last_dur = dur;
 }
@@ -828,7 +854,24 @@ void processLongPress() {
 
             // update the set voltage when we leave set mode; keep the value in a buffer before that
             if (!voltage_set_mode) {
-                set_voltage[panel] = set_voltage_buffer[panel];
+
+                // SOMEHOW the function max(x,y) doesn't work here... maybe because we are accessing an array ?
+                set_voltage_buffer[panel] = (abs_max_voltage < set_voltage_buffer[panel]) ? abs_max_voltage : set_voltage_buffer[panel];
+                set_voltage[panel]        = set_voltage_buffer[panel];
+
+                SerialUSB.print("set_voltage_buffer = ");
+                SerialUSB.print(set_voltage_buffer[panel]);
+                SerialUSB.print("\n");
+
+                SerialUSB.print("max function returned");
+                SerialUSB.print( max(abs_max_voltage, set_voltage_buffer[panel]));
+                SerialUSB.print("\n");
+
+                SerialUSB.print("Max voltage = ");
+                SerialUSB.print(abs_max_voltage);
+                SerialUSB.print("\n");
+
+
                 SerialUSB.print("Setting panel ");
                 SerialUSB.print(panel);
                 SerialUSB.print(" voltage to ");
@@ -847,7 +890,14 @@ void processLongPress() {
 
             // update the set current when we leave set mode; keep the value in a buffer before that
             if (!current_set_mode) {
-                set_current[panel] = set_current_buffer[panel]; 
+
+                set_current_buffer[panel] = (abs_max_current < set_current_buffer[panel]) ? abs_max_current : set_current_buffer[panel];
+                set_current[panel]        = set_current_buffer[panel];
+
+                SerialUSB.print("Max current = ");
+                SerialUSB.print(abs_max_current);
+                SerialUSB.print("\n");
+
                 SerialUSB.print("Setting panel ");
                 SerialUSB.print(panel);
                 SerialUSB.print(" current to ");
@@ -860,16 +910,16 @@ void processLongPress() {
 
 void processShortPress() {
     switch (current_tag) {
-        case tag_0     : setValue(0x0, 0x1&keypad_enabled[1]) ; break ;
-        case tag_1     : setValue(0x1, 0x1&keypad_enabled[1]) ; break ;
-        case tag_2     : setValue(0x2, 0x1&keypad_enabled[1]) ; break ;
-        case tag_3     : setValue(0x3, 0x1&keypad_enabled[1]) ; break ;
-        case tag_4     : setValue(0x4, 0x1&keypad_enabled[1]) ; break ;
-        case tag_5     : setValue(0x5, 0x1&keypad_enabled[1]) ; break ;
-        case tag_6     : setValue(0x6, 0x1&keypad_enabled[1]) ; break ;
-        case tag_7     : setValue(0x7, 0x1&keypad_enabled[1]) ; break ;
-        case tag_8     : setValue(0x8, 0x1&keypad_enabled[1]) ; break ;
-        case tag_9     : setValue(0x9, 0x1&keypad_enabled[1]) ; break ;
+        case tag_0     : setDigitValue(0x0, 0x1&keypad_enabled[1]) ; break ;
+        case tag_1     : setDigitValue(0x1, 0x1&keypad_enabled[1]) ; break ;
+        case tag_2     : setDigitValue(0x2, 0x1&keypad_enabled[1]) ; break ;
+        case tag_3     : setDigitValue(0x3, 0x1&keypad_enabled[1]) ; break ;
+        case tag_4     : setDigitValue(0x4, 0x1&keypad_enabled[1]) ; break ;
+        case tag_5     : setDigitValue(0x5, 0x1&keypad_enabled[1]) ; break ;
+        case tag_6     : setDigitValue(0x6, 0x1&keypad_enabled[1]) ; break ;
+        case tag_7     : setDigitValue(0x7, 0x1&keypad_enabled[1]) ; break ;
+        case tag_8     : setDigitValue(0x8, 0x1&keypad_enabled[1]) ; break ;
+        case tag_9     : setDigitValue(0x9, 0x1&keypad_enabled[1]) ; break ;
         case tag_point : setDecimalPoint()                  ; break ;
         case tag_left  : moveCursorLeft()                   ; break ;
         case tag_right : moveCursorRight()                  ; break ;
