@@ -14,18 +14,22 @@ float max_current_scaler = 1.1;
 
 #define Serial SerialUSB
 
-bool ovp_ok        = 1;
-bool ovc_ok        = 1;
-bool output_on [2] = {0,0};
-bool status_ok     = 1;
+int last_time =0;
 
 int counter    = 0;
 int dac_counts = 0;
-float radians  = 0;
 
+bool ovp_ok        = 1;
+bool ovc_ok        = 1;
+bool status_ok     = 1;
 
+bool output_on [2] = {0,0};
 uint16_t max_voltage = 0;
 uint16_t max_current = 0;
+
+uint16_t voltage_max [2] = {0,0}; // holds the current maximum allowed voltage (in volts)
+uint16_t current_max [2] = {0,0};
+uint16_t voltage_min [2] = {0,0};
 
 uint16_t set_voltage [2]      = {0,0};  // Set Voltage IN Volts
 uint16_t set_current [2]      = {0,0};  // Set Current IN Centi-Amps (10s of mA -- needed for 1 decimal place)
@@ -34,10 +38,10 @@ uint16_t read_voltage_counts [2]      = {0,0};  // Current reading in counts
 uint16_t read_current_counts [2]      = {0,0};  // Current reading in counts
 
 //-Voltage + Current Reading Smoothing----------------------------------------------------------------------------------
-const int boxcar_size = 100;
-uint16_t read_voltage_counts_arr [2][boxcar_size];
-uint16_t read_current_counts_arr [2][boxcar_size];
-uint8_t  read_index = 0;
+const int num_boxcars = 100;
+uint8_t   read_index  = 0;
+uint16_t read_voltage_counts_arr [2][num_boxcars];
+uint16_t read_current_counts_arr [2][num_boxcars];
 uint32_t read_voltage_counts_total [2];
 uint16_t read_voltage_counts_average[2];
 uint32_t read_current_counts_total [2];
@@ -46,14 +50,12 @@ uint16_t read_current_counts_average[2];
 uint16_t last_set_voltage [2] = {0,0};
 uint16_t last_set_current [2] = {0,0};
 
-uint16_t set_voltage_buffer [2] = {0,0}; // set voltage (in VOLTS)
-uint16_t set_current_buffer [2] = {0,0}; // set current (in CENTI-amps !!)
 
 uint16_t adc_fast_reading [8];
 
 void setup () {
 
-    for (int i=0; i<boxcar_size; i++) {
+    for (int i=0; i<num_boxcars; i++) {
         read_voltage_counts_arr [0][i] = 0;
         read_voltage_counts_arr [1][i] = 0;
         read_current_counts_arr [0][i] = 0;
@@ -126,7 +128,7 @@ void loop () {
         last_time = millis();
     }
 
-    // Read ADCs with Boxcar Smoothing (sample count controlled by boxcar_size)
+    // Read ADCs with Boxcar Smoothing (sample count controlled by num_boxcars)
     //------------------------------------------------------------------------------------------------------------------
     fastReadAdcs();
 
@@ -146,7 +148,7 @@ void loop () {
         updateScreen();
     }
 
-    // Update Min/Max voltage parameters
+    // Update Min/Max voltage parameters (based on possible new values from screen)
     //------------------------------------------------------------------------------------------------------------------
     updateMinMax();
 
@@ -157,6 +159,7 @@ void loop () {
 
 void checkMinMax()
 {
+    // use the NON-averaged values here.. don't want to be too slow. But will this be too susceptible to transients?
     for (int panel=0; panel<2; panel++) {
 
         //-max voltage------------------------------------------------------------------------------------------------------
@@ -233,13 +236,13 @@ void fastReadAdcs() {
         read_voltage_counts_arr[i][read_index] = read_voltage_counts[i];
         read_current_counts_arr[i][read_index] = read_current_counts[i];
 
-        read_voltage_counts_average[i] = read_voltage_counts_total[i]/boxcar_size;
-        read_current_counts_average[i] = read_current_counts_total[i]/boxcar_size;
+        read_voltage_counts_average[i] = read_voltage_counts_total[i]/num_boxcars;
+        read_current_counts_average[i] = read_current_counts_total[i]/num_boxcars;
 
     }
 
     read_index++;
-    if (read_index >= boxcar_size) {
+    if (read_index >= num_boxcars) {
         read_index = 0;
     }
 }

@@ -14,17 +14,43 @@
 #define MY_WHITE    0xffffffUL
 #define MY_PURPLE   0xb3b3ccUL
 
+ extern uint16_t read_voltage_counts_average[2];
+ extern uint16_t read_voltage_counts_average[2];
+
+extern uint16_t set_voltage [2]    ;  // Set Voltage IN Volts
+extern uint16_t set_current [2]    ;  // Set Current IN Centi-Amps (10s of mA -- needed for 1 decimal place)
+
+extern bool ovp_ok        ;
+extern bool ovc_ok        ;
+extern bool status_ok     ;
+
+extern bool output_on [2];
+
+void setupScreen () ;
+void shortPress (bool *press_detected);
+void press (uint8_t debounce_time, uint8_t *high_cnt, uint8_t *low_cnt, bool *press_allow, bool *press_detected);
+void printCurrentTag () ;
+void setDecimalPoint();
+void moveCursorLeft();
+void moveCursorRight();
+void updateSetStrings (uint8_t panel) ;
+void setDigitValue (uint8_t value, uint8_t panel);
+void buildStatus (int panel);
+void processLongPress() ;
+void processShortPress() ;
+void buildKeypad (int keypad);
+void buildKey    (int x, int y, int box_size, int tag, char* text) ;
+void processButtons ()  ;
+void updateScreen();
+
+
+
 int screenWidth = 480, screenHeight = 320;
 int windowWidth = 240, windowHeight = 320;
 
-int last_time =0;
 
 int bounding_margin = 20;
 uint32_t keypad_taglist=0;
-
-uint16_t voltage_max [2] = {0,0}; // holds the current maximum allowed voltage (in volts)
-uint16_t current_max [2] = {0,0};
-uint16_t voltage_min [2] = {0,0};
 
 bool keypad_enabled [2] = {0,0};
 
@@ -104,8 +130,54 @@ char set_current_highlight [] = "00.0mA";
 bool voltage_set_mode = 0;
 bool current_set_mode = 0;
 
+uint16_t set_voltage_buffer [2] = {0,0}; // set voltage (in VOLTS)
+uint16_t set_current_buffer [2] = {0,0}; // set current (in CENTI-amps !!)
 
-void printCurrentTag () {
+void setupScreen ()
+{
+}
+
+
+void shortPress (bool *press_detected)
+{
+    if (dur==1 && last_dur==0 && !*press_detected) {
+        *press_detected = 1;
+        SerialUSB.println("Short press!");
+    }
+    else {
+        *press_detected = 0;
+    }
+}
+
+void press (uint8_t debounce_time, uint8_t *high_cnt, uint8_t *low_cnt, bool *press_allow, bool *press_detected)
+{
+    if (dur==1 && last_dur==1 && *press_allow) {
+        *high_cnt += 1;
+    }
+
+    if (dur==0 && last_dur==0 && !*press_allow)  {
+        *low_cnt += 1;
+    }
+
+    if (*low_cnt > debounce_time/2) {
+        *press_allow = 1;
+        *low_cnt     = 0;
+        *high_cnt    = 0;
+    }
+
+    if (*press_allow && *high_cnt > debounce_time) {
+        SerialUSB.println("Long press!");
+        *press_allow    = 0;
+        *press_detected = 1;
+    }
+    else
+    {
+        *press_detected = 0;
+    }
+}
+
+void printCurrentTag ()
+{
     if (current_tag!=0 && current_tag!=255) {
         SerialUSB.print("tag: ");
         SerialUSB.print(current_tag);
@@ -117,62 +189,6 @@ void printCurrentTag () {
         SerialUSB.print(y);
         SerialUSB.print("\n");
     }
-}
-
-void updateScreen()
-{
-    //------------------------------------------------------------------------------------------------------------------
-    // Start Drawing Screen
-    //------------------------------------------------------------------------------------------------------------------
-
-    CleO.Start();
-
-    //------------------------------------------------------------------------------------------------------------------
-    // Build Keypads / Status Screens
-    //------------------------------------------------------------------------------------------------------------------
-
-    CleO.RectangleJustification(MM);
-    CleO.LineColor(line_color);
-
-    if (keypad_enabled[0]) {
-        buildStatus(0);
-        buildKeypad(0);
-    } else if (keypad_enabled[1]) {
-        buildStatus(1);
-        buildKeypad(1);
-    } else {
-        buildStatus(0);
-        buildStatus(1);
-    }
-
-    CleO.LineWidth(3);
-    CleO.Line(windowWidth, 0, windowWidth, windowHeight); // center line vertical
-
-    //------------------------------------------------------------------------------------------------------------------
-    // Collect Tags
-    //------------------------------------------------------------------------------------------------------------------
-
-    processButtons();
-
-    //------------------------------------------------------------------------------------------------------------------
-    // Parse Tags
-    //------------------------------------------------------------------------------------------------------------------
-
-    // long press for power and opening the keypad
-    if (long_press_detected) {
-        processLongPress();
-    }
-
-    // short presses are OK for keypad touches
-    else if (short_press_detected && (keypad_enabled[0] || keypad_enabled[1])) {
-        processShortPress();
-    }
-
-    //------------------------------------------------------------------------------------------------------------------
-    // Update Screen
-    //------------------------------------------------------------------------------------------------------------------
-
-    CleO.Show();
 }
 
 void setDecimalPoint()
@@ -199,6 +215,16 @@ void moveCursorRight()
         cursor_index++;
     else
         cursor_index=0;
+}
+
+void updateSetStrings (uint8_t panel)
+{
+    // need to breakdown the set current for decimal representation
+    int characteristic = set_current_buffer[panel] / 10;
+    int mantissa       = set_current_buffer[panel] % 10;
+
+    sprintf(set_voltage_str,         "%04luV",        set_voltage_buffer[panel]);
+    sprintf(set_current_str,         "%02lu.%01lumA",  characteristic, mantissa);
 }
 
 void setDigitValue (uint8_t value, uint8_t panel)
@@ -258,12 +284,8 @@ void setDigitValue (uint8_t value, uint8_t panel)
     }
 }
 
-
-
-
 void buildStatus (int panel)
 {
-
     int x_offset=0;
     if (panel==1) x_offset=240;
 
@@ -371,21 +393,7 @@ void buildStatus (int panel)
 
     CleO.StringExt(FONT_VGA_16 , 60  + x_offset , 200 , display_text_color , MM , 0 , 0 , set_voltage_str); // voltage set
     CleO.StringExt(FONT_VGA_16 , 180 + x_offset , 200 , display_text_color , MM , 0 , 0 , set_current_str); // current set
-
 }
-
-
-void updateSetStrings (uint8_t panel) {
-
-    // need to breakdown the set current for decimal representation
-    int characteristic = set_current_buffer[panel] / 10;
-    int mantissa       = set_current_buffer[panel] % 10;
-
-    sprintf(set_voltage_str,         "%04luV",        set_voltage_buffer[panel]);
-    sprintf(set_current_str,         "%02lu.%01lumA",  characteristic, mantissa);
-}
-
-
 
 void processLongPress() {
     for (int panel=0; panel<2; panel++) {
@@ -451,7 +459,6 @@ void processLongPress() {
             }
         }
     }
-
 }
 
 void processShortPress() {
@@ -471,9 +478,6 @@ void processShortPress() {
         case tag_right : moveCursorRight()                  ; break ;
     }
 }
-
-
-
 
 void buildKeypad (int keypad)
 {
@@ -525,11 +529,10 @@ void buildKeypad (int keypad)
     CleO.Line(x_offset+0   , 240 , x_offset+240 , 240);
 
     CleO.Line(x_offset+160   , 280 , x_offset+240 , 280);
-
 }
 
-void buildKey    (int x, int y, int box_size, int tag, char* text) {
-
+void buildKey    (int x, int y, int box_size, int tag, char* text)
+{
     bool tagged = (current_tag==tag);
 
     int tag_size = box_size-(tagged ? 0 : bounding_margin);
@@ -569,8 +572,8 @@ void buildKey    (int x, int y, int box_size, int tag, char* text) {
     }
 }
 
-void processButtons () { 
-
+void processButtons ()
+{
     CleO.TouchCoordinates(x, y, dur, current_tag);
 
     // manual tagging for >14 --- the software is REALLY buggy otherwise
@@ -630,42 +633,59 @@ void processButtons () {
     last_dur = dur;
 }
 
-void shortPress (bool *press_detected)
+void updateScreen()
 {
-    if (dur==1 && last_dur==0 && !*press_detected) {
-        *press_detected = 1;
-        SerialUSB.println("Short press!");
-    }
-    else {
-        *press_detected = 0;
+    //------------------------------------------------------------------------------------------------------------------
+    // Start Drawing Screen
+    //------------------------------------------------------------------------------------------------------------------
+
+    CleO.Start();
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Build Keypads / Status Screens
+    //------------------------------------------------------------------------------------------------------------------
+
+    CleO.RectangleJustification(MM);
+    CleO.LineColor(line_color);
+
+    if (keypad_enabled[0]) {
+        buildStatus(0);
+        buildKeypad(0);
+    } else if (keypad_enabled[1]) {
+        buildStatus(1);
+        buildKeypad(1);
+    } else {
+        buildStatus(0);
+        buildStatus(1);
     }
 
-}
+    CleO.LineWidth(3);
+    CleO.Line(windowWidth, 0, windowWidth, windowHeight); // center line vertical
 
-void press (uint8_t debounce_time, uint8_t *high_cnt, uint8_t *low_cnt, bool *press_allow, bool *press_detected)
-{
-    if (dur==1 && last_dur==1 && *press_allow) {
-        *high_cnt += 1;
+    //------------------------------------------------------------------------------------------------------------------
+    // Collect Tags
+    //------------------------------------------------------------------------------------------------------------------
+
+    processButtons();
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Parse Tags
+    //------------------------------------------------------------------------------------------------------------------
+
+    // long press for power and opening the keypad
+    if (long_press_detected) {
+        processLongPress();
     }
 
-    if (dur==0 && last_dur==0 && !*press_allow)  {
-        *low_cnt += 1;
+    // short presses are OK for keypad touches
+    else if (short_press_detected && (keypad_enabled[0] || keypad_enabled[1])) {
+        processShortPress();
     }
 
-    if (*low_cnt > debounce_time/2) {
-        *press_allow = 1;
-        *low_cnt     = 0;
-        *high_cnt    = 0;
-    }
+    //------------------------------------------------------------------------------------------------------------------
+    // Update Screen
+    //------------------------------------------------------------------------------------------------------------------
 
-    if (*press_allow && *high_cnt > debounce_time) {
-        SerialUSB.println("Long press!");
-        *press_allow    = 0;
-        *press_detected = 1;
-    }
-    else
-    {
-        *press_detected = 0;
-    }
+    CleO.Show();
 }
 #endif /* SCREEN_H */
