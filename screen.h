@@ -1,5 +1,5 @@
 #ifndef SCREEN_H
-#define SCREEN_H 
+#define SCREEN_H
 
 #include <CleO.h>
 
@@ -15,14 +15,14 @@
 #define MY_PURPLE   0xb3b3ccUL
 
  extern uint16_t read_voltage_counts_average[2];
- extern uint16_t read_voltage_counts_average[2];
+ extern uint16_t read_current_counts_average[2];
 
-extern uint16_t set_voltage [2]    ;  // Set Voltage IN Volts
-extern uint16_t set_current [2]    ;  // Set Current IN Centi-Amps (10s of mA -- needed for 1 decimal place)
+extern uint16_t set_decivolts [2]    ;  // Set Voltage IN deci-Volts
+extern uint32_t set_microamps [2]    ;  // Set Current IN micro-Amps
 
-extern bool ovp_ok        ;
-extern bool ovc_ok        ;
-extern bool status_ok     ;
+extern bool ovp_ok    [2]  ;
+extern bool ovc_ok    [2]  ;
+extern bool status_ok [2] ;
 
 extern bool output_on [2];
 
@@ -130,8 +130,8 @@ char set_current_highlight [] = "00.0mA";
 bool voltage_set_mode = 0;
 bool current_set_mode = 0;
 
-uint16_t set_voltage_buffer [2] = {0,0}; // set voltage (in VOLTS)
-uint16_t set_current_buffer [2] = {0,0}; // set current (in CENTI-amps !!)
+uint16_t set_voltage_buffer [2] = {0,0}; // set voltage (in     Volts)
+uint16_t set_current_buffer [2] = {0,0}; // set current (in    100uA units)
 
 void setupScreen ()
 {
@@ -223,7 +223,7 @@ void updateSetStrings (uint8_t panel)
     int characteristic = set_current_buffer[panel] / 10;
     int mantissa       = set_current_buffer[panel] % 10;
 
-    sprintf(set_voltage_str,         "%04luV",        set_voltage_buffer[panel]);
+    sprintf(set_voltage_str,         "%04luV",         set_voltage_buffer[panel]);
     sprintf(set_current_str,         "%02lu.%01lumA",  characteristic, mantissa);
 }
 
@@ -274,7 +274,7 @@ void setDigitValue (uint8_t value, uint8_t panel)
         int characteristic        = strtol(set_current_str, &end, 10);
         int mantissa              = strtol(end,             &end, 10);
 
-        set_current_buffer[panel] = 10*characteristic + mantissa;
+        set_current_buffer[panel] = (10 * characteristic) + mantissa;
 
         SerialUSB.print("Setting current buffer to ");
         SerialUSB.print(set_current_buffer[panel]);
@@ -294,11 +294,11 @@ void buildStatus (int panel)
     //------------------------------------------------------------------------------------------------------------------
 
     // over voltage
-    CleO.RectangleColor(ovp_ok ? color_good : color_bad);
+    CleO.RectangleColor(ovp_ok[panel] ? color_good : color_bad);
     CleO.RectangleXY(x_offset+200, 40, 80,80);
 
     // over current
-    CleO.RectangleColor(ovc_ok ? color_good : color_bad);
+    CleO.RectangleColor(ovc_ok[panel] ? color_good : color_bad);
     CleO.RectangleXY(x_offset+200, 120, 80,80);
 
     // on/off
@@ -306,7 +306,7 @@ void buildStatus (int panel)
     CleO.RectangleXY(x_offset+60, 280, 120,80);
 
     // status
-    CleO.RectangleColor(status_ok ? color_good : color_bad);
+    CleO.RectangleColor(status_ok[panel] ? color_good : color_bad);
     CleO.RectangleXY(x_offset+180, 280, 120,80);
 
     // voltage set
@@ -336,14 +336,14 @@ void buildStatus (int panel)
     //------------------------------------------------------------------------------------------------------------------
 
     uint16_t deciVolts = countsToDeciVolts(read_voltage_counts_average[panel]);
-    uint16_t centiAmps = countsToCentiAmps(read_voltage_counts_average[panel]);
+    uint16_t microAmps = countsToMicroAmps(read_current_counts_average[panel]);
 
     //SerialUSB.println(mv);
     char buf_volts[10];
     char buf_current[10];
 
-    sprintf(buf_volts,   "% 4lu.%01luV",  deciVolts / 10,  deciVolts % 10);
-    sprintf(buf_current, "% 2lu.%02lumA", centiAmps / 100, centiAmps % 100);
+    sprintf(buf_volts,   "% 4lu.%01luV",  deciVolts / 10,    deciVolts % 10);
+    sprintf(buf_current, "% 2lu.%02lumA", microAmps / 1000,  (microAmps % 1000)/100);
 
     CleO.LineWidth(1);
     CleO.StringExt(FONT_SANS_3 , 80  + x_offset , 40  , display_text_color , MM , 0 , 0 , buf_volts); // voltage
@@ -411,7 +411,9 @@ void processLongPress() {
 
                 // SOMEHOW the function max(x,y) doesn't work here... maybe because we are accessing an array ?
                 set_voltage_buffer[panel] = (abs_max_voltage < set_voltage_buffer[panel]) ? abs_max_voltage : set_voltage_buffer[panel];
-                set_voltage[panel]        = set_voltage_buffer[panel];
+
+                // convert to deciVolts!  ;;; don't forget
+                set_decivolts[panel]      = 10 * set_voltage_buffer[panel];
 
                 SerialUSB.print("set_voltage_buffer = ");
                 SerialUSB.print(set_voltage_buffer[panel]);
@@ -429,11 +431,11 @@ void processLongPress() {
                 SerialUSB.print("Setting panel ");
                 SerialUSB.print(panel);
                 SerialUSB.print(" voltage to ");
-                SerialUSB.print(set_voltage[panel]);
+                SerialUSB.print(set_decivolts[panel]);
                 SerialUSB.print("\n");
             }
 
-            cursor_index          = 0;
+            cursor_index = 0;
         }
         else if (current_tag==tag_currents[panel] && !voltage_set_mode)
         {
@@ -446,7 +448,9 @@ void processLongPress() {
             if (!current_set_mode) {
 
                 set_current_buffer[panel] = (abs_max_current < set_current_buffer[panel]) ? abs_max_current : set_current_buffer[panel];
-                set_current[panel]        = set_current_buffer[panel];
+
+                // convert to microamps!  don't forget
+                set_microamps[panel]      = 100 * set_current_buffer[panel];
 
                 SerialUSB.print("Max current = ");
                 SerialUSB.print(abs_max_current);
@@ -455,7 +459,7 @@ void processLongPress() {
                 SerialUSB.print("Setting panel ");
                 SerialUSB.print(panel);
                 SerialUSB.print(" current to ");
-                SerialUSB.print(set_current[panel]);
+                SerialUSB.print(set_microamps[panel]);
             }
         }
     }
@@ -589,7 +593,7 @@ void processButtons ()
                 if (          y > 160+10
                         &&    y < 240-10
                         &&    x > window*windowWidth + 0+10
-                        &&    x < window*windowWidth + 120-10 
+                        &&    x < window*windowWidth + 120-10
                    )
                 {
                     current_tag = tag_voltages[window];

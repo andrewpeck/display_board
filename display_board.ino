@@ -1,44 +1,42 @@
 #include "controller.h"
-#include "high_voltage.h"
-#include "screen.h"
-
-#include <SPI.h>
-
 Controller controller;
 
+#include <SPI.h>
+#define Serial SerialUSB
+
+#include "high_voltage.h"
+#include "screen.h"
 
 float max_voltage_scaler = 1.1;
 float min_voltage_scaler = 0.9;
 float max_current_scaler = 1.1;
 
-
-#define Serial SerialUSB
-
 int last_time =0;
 
 int counter    = 0;
-int dac_counts = 0;
 
-bool ovp_ok        = 1;
-bool ovc_ok        = 1;
-bool status_ok     = 1;
+bool     ovp_ok    [2]           = {1,1};
+bool     ovc_ok    [2]           = {1,1};
+bool     status_ok [2]           = {1,1};
 
-bool     output_on [2] = {0,0};
-uint16_t max_voltage = 0;
-uint16_t max_current = 0;
+bool     output_on [2]           = {0,0};
 
-uint16_t voltage_max [2] = {0,0}; // holds the current maximum allowed voltage (in volts)
-uint16_t current_max [2] = {0,0};
-uint16_t voltage_min [2] = {0,0};
+uint16_t decivolts_max [2]         = {0,0}; // holds the current allowed voltage (in deciVolts)
+uint32_t microamps_max [2]         = {0,0}; // holds the maximum allowed current (in microAmps)
+uint16_t decivolts_min [2]         = {0,0};
 
-uint16_t set_voltage [2]      = {0,0};  // Set Voltage IN Volts
-uint16_t set_current [2]      = {0,0};  // Set Current IN Centi-Amps (10s of mA -- needed for 1 decimal place)
+uint16_t set_decivolts [2]         = {0,0};  // Set Voltage IN deciVolts
+uint32_t set_microamps [2]         = {0,0};  // Set Current IN microAmps (10s of mA -- needed for 1 decimal place)
 
-uint16_t read_voltage_counts [2]      = {0,0};  // Current reading in counts
-uint16_t read_current_counts [2]      = {0,0};  // Current reading in counts
+uint16_t read_voltage_counts [2] = {0,0};  // Current reading in counts
+uint16_t read_current_counts [2] = {0,0};  // Current reading in counts
+
+uint16_t read_decivolts_fast [2] = {0,0};  // Current reading in decivolts
+uint32_t read_microamps_fast [2] = {0,0};  // Current reading in microamps
 
 //-Voltage + Current Reading Smoothing----------------------------------------------------------------------------------
-const int num_boxcars = 100;
+
+const int num_boxcars = 128; // should use a power of 2 here if you can help it..
 uint8_t   read_index  = 0;
 uint16_t read_voltage_counts_arr [2][num_boxcars];
 uint16_t read_current_counts_arr [2][num_boxcars];
@@ -47,8 +45,8 @@ uint16_t read_voltage_counts_average[2];
 uint32_t read_current_counts_total [2];
 uint16_t read_current_counts_average[2];
 
-uint16_t last_set_voltage [2] = {0,0};
-uint16_t last_set_current [2] = {0,0};
+uint16_t last_set_decivolts [2] = {0,0};
+uint32_t last_set_microamps [2] = {0,0};
 
 
 uint16_t adc_fast_reading [8];
@@ -116,8 +114,8 @@ void setup () {
     //------------------------------------------------------------------------------------------------------------------
     // Power Supply Enables
     //------------------------------------------------------------------------------------------------------------------
-    setEnable(0, 0);
-    setEnable(0, 1);
+    disableChannel(0);
+    disableChannel(1);
     configureEnables();
 
 
@@ -158,30 +156,45 @@ void loop () {
 
     // Read ADCs with Boxcar Smoothing (sample count controlled by num_boxcars)
     //------------------------------------------------------------------------------------------------------------------
+    if (counter%1==0) {
     fastReadAdcs();
+    }
 
-    // Check if voltages and currents are within tolerance
+    // Check if voltages and currents are within tolerance;
+    // Shutdown outputs if over
     //------------------------------------------------------------------------------------------------------------------
+    if (counter%1==0) {
     checkMinMax();
+    }
+
+    for (int i=0; i<2; i++) {
+    if (!ovc_ok[i]) disableChannel(i);
+    }
+
 
     // Update DAC
     //------------------------------------------------------------------------------------------------------------------
-    if (counter%1==0) { // want to read ADCs fast.. but can think about skipping DAC writes
+    if (counter%5==0) { // want to read ADCs fast.. but can think about skipping DAC writes
         updateDacs();
     }
 
     // Refresh Screen -- skip loops to avoid unnecessarily high refresh rate
     //------------------------------------------------------------------------------------------------------------------
-    if (counter%5==0) {
+    if (counter%3==0) {
         updateScreen();
     }
 
     // Update Min/Max voltage parameters (based on possible new values from screen)
     //------------------------------------------------------------------------------------------------------------------
+    if (counter%1==0) {
     updateMinMax();
+    }
 
-    for (int i=0; i<2; i++) {
-        if (ovc[i]) shutdown[i]
+    // Check "Steady State"
+    //------------------------------------------------------------------------------------------------------------------
+
+    if (counter%10==0) {
+        checkStability();
     }
 
     // Increment Loop Counter
@@ -194,30 +207,36 @@ void checkMinMax()
     // use the NON-averaged values here.. don't want to be too slow. But will this be too susceptible to transients?
     for (int panel=0; panel<2; panel++) {
 
-        //-max voltage------------------------------------------------------------------------------------------------------
-        if (read_voltage_counts[panel] > voltage_max[panel])
-            ovp_ok = 0;
-        //-min voltage------------------------------------------------------------------------------------------------------
-        if (read_voltage_counts[panel] < voltage_min[panel])
-            ovp_ok = 0;
+        //-max voltage--------------------------------------------------------------------------------------------------
+        if (read_decivolts_fast[panel] > decivolts_max[panel])
+            ovp_ok[panel] = 0;
+        //-min voltage--------------------------------------------------------------------------------------------------
+        else if (read_decivolts_fast[panel] < decivolts_min[panel])
+            ovp_ok[panel] = 0;
         else
-            ovp_ok = 1;
+            ovp_ok[panel] = 1;
 
+        if (!ovp_ok[panel]) disableChannel(panel);
 
-        //-max current------------------------------------------------------------------------------------------------------
-        ovc_ok = (read_current_counts[panel] < current_max[panel]) ? 1 : 0;
+        //-max current--------------------------------------------------------------------------------------------------
+        //SerialUSB.print("read_microamps: ");
+        //SerialUSB.print(read_microamps_fast[panel]);
+        //SerialUSB.print("\n");
+        //SerialUSB.print("max_microamps: ");
+        //SerialUSB.print(microamps_max[panel]);
+        //SerialUSB.print("\n");
+        ovc_ok[panel] = (read_microamps_fast[panel] < microamps_max[panel]) ? 1 : 0;
 
+        if (!ovc_ok[panel]) disableChannel(panel);
     }
 }
 
 void updateMinMax()
 {
     for (int panel=0; panel<2; panel++) {
-        voltage_max[panel] = set_voltage[panel] * max_voltage_scaler;
-
-        current_max[panel] = set_current[panel] * max_current_scaler;
-
-        voltage_min[panel] = set_voltage[panel] * min_voltage_scaler;
+        decivolts_max[panel] = set_decivolts[panel] * max_voltage_scaler;
+        microamps_max[panel] = set_microamps[panel] * max_current_scaler;
+        decivolts_min[panel] = 0; // set_decivolts[panel] * min_voltage_scaler;
     }
 
 }
@@ -226,20 +245,22 @@ void updateDacs()
 {
     for (int ichan=0; ichan<2; ichan++) {
         if (!output_on[ichan]) { // turn off the output if the output is off. duh!
-            controller.writeDac(ichan, output_zerovolt_safe);
-            last_set_voltage[ichan] = 0; // make sure this gets set here, or we won't write the dac when enabling the output
+            disableChannel(ichan);
+            controller.writeDac(ichan,   output_zerovolt_safe);
+            controller.writeDac(ichan+2, output_zerovolt_safe); // TODO: for DAC loopback ONLY!!
+            last_set_decivolts[ichan] = 0; // make sure this gets set here, or we won't write the dac when enabling the output
         }
-        else if (set_voltage[ichan]!=last_set_voltage[ichan]) { // no point in re-writing the same voltage on the dac
+        else if (set_decivolts[ichan]!=last_set_decivolts[ichan]) { // no point in re-writing the same voltage on the dac
 
-            uint16_t counts = voltageToDacCounts(set_voltage[ichan]);
+            uint16_t counts          = deciVoltsToDacCounts(set_decivolts[ichan]);
             uint16_t inverted_counts = invertCounts (counts);
 
-            last_set_voltage[ichan]=set_voltage[ichan];
+            last_set_decivolts[ichan]=set_decivolts[ichan];
 
             SerialUSB.print("setting dac ");
             SerialUSB.print(ichan);
             SerialUSB.print(" to ");
-            SerialUSB.print(set_voltage[ichan]);
+            SerialUSB.print(10*set_decivolts[ichan]);
             SerialUSB.print(" = (");
             SerialUSB.print(inverted_counts);
             SerialUSB.print(" inverted dac_counts) ");
@@ -248,33 +269,63 @@ void updateDacs()
             SerialUSB.print(" non-inverted dac_counts)");
             SerialUSB.print("\n");
 
-            controller.writeDac(ichan, inverted_counts);
+            controller.writeDac(ichan,   inverted_counts);
+            controller.writeDac(ichan+2, inverted_counts);  // TODO: for dac loopback only
         }
     }
 }
 
+void checkStability() {
+
+    int      stability_win_size = 20; // decivolts; use 2V for now.
+
+    for (int i=0; i<2; i++) {
+
+        uint16_t decivolts = countsToDeciVolts(read_voltage_counts_average[i]);
+
+        if ( (set_decivolts[i] + stability_win_size > decivolts) &&
+             (set_decivolts[i] - stability_win_size < decivolts)
+           )
+            status_ok[i] = 1;
+        else
+            status_ok[i] = 0;
+    }
+}
+
 void fastReadAdcs() {
+
+    //-Readings --------------------------------------------------------------------------------------------------------
     for (int i=0; i<8; i++) {
         adc_fast_reading[i] = controller.readArduinoAdc(i);
     }
 
+    //-Smoothing--------------------------------------------------------------------------------------------------------
     for (int i=0; i<2; i++) {
         read_voltage_counts[i] = adc_fast_reading[i];
         read_current_counts[i] = adc_fast_reading[i+2];
 
+        // update running sum --- push in new value, pop out the old
         read_voltage_counts_total[i] =read_voltage_counts_total[i] - read_voltage_counts_arr [i][read_index] + read_voltage_counts[i];
         read_current_counts_total[i] =read_current_counts_total[i] - read_current_counts_arr [i][read_index] + read_current_counts[i];
 
+        // update this index in the ring buffer
         read_voltage_counts_arr[i][read_index] = read_voltage_counts[i];
         read_current_counts_arr[i][read_index] = read_current_counts[i];
 
+        // averaging
         read_voltage_counts_average[i] = read_voltage_counts_total[i]/num_boxcars;
         read_current_counts_average[i] = read_current_counts_total[i]/num_boxcars;
 
+        // physical units for min/max checking
+        read_decivolts_fast [i] = countsToDeciVolts(read_voltage_counts[i]);
+        read_microamps_fast [i] = countsToMicroAmps(read_current_counts[i]);
+
     }
 
+    // ring buffer index
     read_index++;
     if (read_index >= num_boxcars) {
         read_index = 0;
     }
+
 }
