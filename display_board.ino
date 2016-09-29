@@ -23,7 +23,7 @@ bool ovp_ok        = 1;
 bool ovc_ok        = 1;
 bool status_ok     = 1;
 
-bool output_on [2] = {0,0};
+bool     output_on [2] = {0,0};
 uint16_t max_voltage = 0;
 uint16_t max_current = 0;
 
@@ -55,28 +55,15 @@ uint16_t adc_fast_reading [8];
 
 void setup () {
 
-    for (int i=0; i<num_boxcars; i++) {
-        read_voltage_counts_arr [0][i] = 0;
-        read_voltage_counts_arr [1][i] = 0;
-        read_current_counts_arr [0][i] = 0;
-        read_current_counts_arr [1][i] = 0;
-    }
-
-    controller.enableDac();
-    controller.enableSwitch();
-    controller.setDacGain(2);
-    analogReadResolution(16);
-
-    pinMode(12, OUTPUT);
-    pinMode(10, OUTPUT);
-    pinMode(13, INPUT);
-
-    digitalWrite(10, LOW);
+    //------------------------------------------------------------------------------------------------------------------
+    // Start Serial
+    //------------------------------------------------------------------------------------------------------------------
 
     SerialUSB.begin(0);
 
-    digitalWrite(10, HIGH);
-
+    //------------------------------------------------------------------------------------------------------------------
+    // Start SPI
+    //------------------------------------------------------------------------------------------------------------------
     SerialUSB.println("UCLA Analog Display Board");
 
     SerialUSB.println("Starting SPI...");
@@ -89,12 +76,54 @@ void setup () {
 
     SerialUSB.println("Setting DDS Frequency");
 
+    //------------------------------------------------------------------------------------------------------------------
+    // Reset Averaging
+    //------------------------------------------------------------------------------------------------------------------
+
+    for (int i=0; i<num_boxcars; i++) {
+        read_voltage_counts_arr [0][i] = 0;
+        read_voltage_counts_arr [1][i] = 0;
+        read_current_counts_arr [0][i] = 0;
+        read_current_counts_arr [1][i] = 0;
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Configure Arduino
+    //------------------------------------------------------------------------------------------------------------------
+
+    analogReadResolution(16);
+
+    pinMode(12, OUTPUT);
+    pinMode(10, OUTPUT);
+    pinMode(13, INPUT);
+
+    digitalWrite(10, LOW);
+    digitalWrite(10, HIGH);
+
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Write DAC
+    //------------------------------------------------------------------------------------------------------------------
+
+    controller.enableDac();
+    controller.enableSwitch();
+    controller.setDacGain(2);
+
     for (int ichan=0; ichan<8; ichan++) {
         controller.writeDac(ichan, output_zerovolt_safe);
     }
 
-    SerialUSB.println("DDS Frequency Set");
+    //------------------------------------------------------------------------------------------------------------------
+    // Power Supply Enables
+    //------------------------------------------------------------------------------------------------------------------
+    setEnable(0, 0);
+    setEnable(0, 1);
+    configureEnables();
 
+
+    //------------------------------------------------------------------------------------------------------------------
+    // CleO
+    //------------------------------------------------------------------------------------------------------------------
 
     SerialUSB.println("Starting Cleo");
     /* Initialize CleO - needs to be done only once */
@@ -104,7 +133,6 @@ void setup () {
     CleO.RectangleJustification(MM);
     CleO.SetBackgroundcolor(background_color);
     CleO.Show();
-
 
     CleO.DisplayRotate(2, 0);
     font = CleO.LoadFont("@Fonts/DSEG7ClassicMini-BoldItalic.ftfont");
@@ -151,6 +179,10 @@ void loop () {
     // Update Min/Max voltage parameters (based on possible new values from screen)
     //------------------------------------------------------------------------------------------------------------------
     updateMinMax();
+
+    for (int i=0; i<2; i++) {
+        if (ovc[i]) shutdown[i]
+    }
 
     // Increment Loop Counter
     //------------------------------------------------------------------------------------------------------------------
@@ -246,5 +278,3 @@ void fastReadAdcs() {
         read_index = 0;
     }
 }
-
-

@@ -40,6 +40,10 @@ class Controller {
         void     enableSwitch();
         void     disableSwitch();
 
+
+        void     setGPIO             (uint8_t io, bool state);
+        void     enableGPIO          (uint8_t io);
+
         void     writeDac            (uint8_t ichan, uint16_t value);
 
         void      enableDac();
@@ -77,6 +81,7 @@ class Controller {
         // map taken from display board schematic; convert from io# to PA/BX
         enum {io4=pb23, io9=pb10, io10=pb11, io6=pa13, io5=pa12, io13=pa14, io1=pa20, io2=pa21, io7=pa22, io8=pa23, io14=pa15, io11=pb22, spi0_cs=pa18, analog9=pb2, io3=pa28};
 
+        const uint8_t gpio [4] = { pa8, pa9, pa10, pa11}
 
         //--------------------------------------------------------------------------------------------------------------
         // Gain

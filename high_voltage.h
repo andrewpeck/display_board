@@ -77,4 +77,16 @@ uint16_t invertCounts (uint16_t counts)
     return ((output_zerovolt - counts));
 }
 
+
+void setEnable (uint8_t channel, bool state)
+{
+    controller.setGPIO(channel, state);
+}
+
+void configureEnables ()
+{
+    controller.enableGPIO(0);
+    controller.enableGPIO(1);
+}
+
 #endif /* HIGH_VOLTAGE_H */

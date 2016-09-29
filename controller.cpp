@@ -277,3 +277,15 @@ void Controller::deselectCleo()
 {
     cleo.disable();
 }
+
+
+void Controller::setGPIO (uint8_t io, bool state)
+{
+    assert (io>=0 && io<4);
+    digitalWrite (io, state);
+}
+
+void Controller::enableGPIO (uint8_t io)
+{
+    pinMode(io, OUTPUT);
+}
