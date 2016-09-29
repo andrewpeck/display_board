@@ -7,13 +7,13 @@ Controller controller;
 #include "high_voltage.h"
 #include "screen.h"
 
-float max_voltage_scaler = 1.1;
-float min_voltage_scaler = 0.9;
-float max_current_scaler = 1.1;
-
 int last_time =0;
 
 int counter    = 0;
+
+//----------------------------------------------------------------------------------------------------------------------
+// Status and Readings
+//----------------------------------------------------------------------------------------------------------------------
 
 bool     ovp_ok    [2]           = {1,1};
 bool     ovc_ok    [2]           = {1,1};
@@ -21,12 +21,12 @@ bool     status_ok [2]           = {1,1};
 
 bool     output_on [2]           = {0,0};
 
-uint16_t decivolts_max [2]         = {0,0}; // holds the current allowed voltage (in deciVolts)
-uint32_t microamps_max [2]         = {0,0}; // holds the maximum allowed current (in microAmps)
-uint16_t decivolts_min [2]         = {0,0};
+uint16_t decivolts_max [2]       = {0,0}; // holds the current allowed voltage (in deciVolts)
+uint32_t microamps_max [2]       = {0,0}; // holds the maximum allowed current (in microAmps)
+uint16_t decivolts_min [2]       = {0,0};
 
-uint16_t set_decivolts [2]         = {0,0};  // Set Voltage IN deciVolts
-uint32_t set_microamps [2]         = {0,0};  // Set Current IN microAmps (10s of mA -- needed for 1 decimal place)
+uint16_t set_decivolts [2]       = {0,0};  // Set Voltage IN deciVolts
+uint32_t set_microamps [2]       = {0,0};  // Set Current IN microAmps (10s of mA -- needed for 1 decimal place)
 
 uint16_t read_voltage_counts [2] = {0,0};  // Current reading in counts
 uint16_t read_current_counts [2] = {0,0};  // Current reading in counts
@@ -34,22 +34,31 @@ uint16_t read_current_counts [2] = {0,0};  // Current reading in counts
 uint16_t read_decivolts_fast [2] = {0,0};  // Current reading in decivolts
 uint32_t read_microamps_fast [2] = {0,0};  // Current reading in microamps
 
-//-Voltage + Current Reading Smoothing----------------------------------------------------------------------------------
+uint16_t last_set_decivolts [2]  = {0,0};
+uint32_t last_set_microamps [2]  = {0,0};
+
+uint16_t adc_fast_reading [8]    = {0, 0, 0, 0, 0, 0, 0, 0}; // 8 adc channels
+
+
+//----------------------------------------------------------------------------------------------------------------------
+// Smoothing
+//----------------------------------------------------------------------------------------------------------------------
 
 const int num_boxcars = 128; // should use a power of 2 here if you can help it..
 uint8_t   read_index  = 0;
-uint16_t read_voltage_counts_arr [2][num_boxcars];
-uint16_t read_current_counts_arr [2][num_boxcars];
-uint32_t read_voltage_counts_total [2];
+
+uint16_t read_voltage_counts_train [2][num_boxcars];
+uint16_t read_current_counts_train [2][num_boxcars];
+
 uint16_t read_voltage_counts_average[2];
-uint32_t read_current_counts_total [2];
 uint16_t read_current_counts_average[2];
 
-uint16_t last_set_decivolts [2] = {0,0};
-uint32_t last_set_microamps [2] = {0,0};
+uint32_t read_voltage_counts_total [2];
+uint32_t read_current_counts_total [2];
 
-
-uint16_t adc_fast_reading [8];
+//----------------------------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------------------------
 
 void setup () {
 
@@ -79,10 +88,10 @@ void setup () {
     //------------------------------------------------------------------------------------------------------------------
 
     for (int i=0; i<num_boxcars; i++) {
-        read_voltage_counts_arr [0][i] = 0;
-        read_voltage_counts_arr [1][i] = 0;
-        read_current_counts_arr [0][i] = 0;
-        read_current_counts_arr [1][i] = 0;
+        read_voltage_counts_train [0][i] = 0;
+        read_voltage_counts_train [1][i] = 0;
+        read_current_counts_train [0][i] = 0;
+        read_current_counts_train [1][i] = 0;
     }
 
     //------------------------------------------------------------------------------------------------------------------
@@ -134,9 +143,11 @@ void setup () {
 
     CleO.DisplayRotate(2, 0);
     font = CleO.LoadFont("@Fonts/DSEG7ClassicMini-BoldItalic.ftfont");
+
 }
 
 
+bool state = 0;
 void loop () {
 
     //------------------------------------------------------------------------------------------------------------------
@@ -152,6 +163,8 @@ void loop () {
         SerialUSB.print((millis()-last_time) / 1000);
         SerialUSB.print("\n");
         last_time = millis();
+
+        state = !state;
     }
 
     // Read ADCs with Boxcar Smoothing (sample count controlled by num_boxcars)
@@ -305,12 +318,12 @@ void fastReadAdcs() {
         read_current_counts[i] = adc_fast_reading[i+2];
 
         // update running sum --- push in new value, pop out the old
-        read_voltage_counts_total[i] =read_voltage_counts_total[i] - read_voltage_counts_arr [i][read_index] + read_voltage_counts[i];
-        read_current_counts_total[i] =read_current_counts_total[i] - read_current_counts_arr [i][read_index] + read_current_counts[i];
+        read_voltage_counts_total[i] =read_voltage_counts_total[i] - read_voltage_counts_train [i][read_index] + read_voltage_counts[i];
+        read_current_counts_total[i] =read_current_counts_total[i] - read_current_counts_train [i][read_index] + read_current_counts[i];
 
         // update this index in the ring buffer
-        read_voltage_counts_arr[i][read_index] = read_voltage_counts[i];
-        read_current_counts_arr[i][read_index] = read_current_counts[i];
+        read_voltage_counts_train[i][read_index] = read_voltage_counts[i];
+        read_current_counts_train[i][read_index] = read_current_counts[i];
 
         // averaging
         read_voltage_counts_average[i] = read_voltage_counts_total[i]/num_boxcars;

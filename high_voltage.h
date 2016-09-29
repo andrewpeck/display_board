@@ -1,29 +1,46 @@
 #ifndef HIGH_VOLTAGE_H
 #define HIGH_VOLTAGE_H
 
-int dac_vref = 5;
+//----------------------------------------------------------------------------------------------------------------------
+// Controller parameters
+//----------------------------------------------------------------------------------------------------------------------
+
+int      dac_vref = 5; // TODO: this should be changed to 2.5 * dac_gain
 uint32_t dac_full_scale = (1<<16)-1;
+
+const uint32_t input_divider  = 2; // Voltage divider at the input of the control board
+
+const float      input_scaler  [8] = {1.0 , 1.0 , 1.0 , 1.0 , 1.0 , 1.0 , 1.0 , 1.0}; // scale the gain of the inputs to correct error in the voltage divider
+const uint32_t   output_offset [8] = {0   , 0   , 0   , 0   , 0   , 0   , 0   , 0};   // output offset voltage
+
+const uint32_t adc_vref = 33; // uC adc voltage reference in deciVolts == 3.3V
+
 //----------------------------------------------------------------------------------------------------------------------
 // Power Supply Parameters
 //----------------------------------------------------------------------------------------------------------------------
+
 const uint32_t hv_divider     = 820; // V/V -- X volts high-voltage output / Y volts monitor output
 const uint32_t hv_multiplier  = 820; // V/V -- X volts high-voltage output / Y volts dac input
 const uint32_t current_scaler = 5; // V/A (Ohms!) -- X volts current monitor output / Y Amps high-voltage current
-const uint32_t input_divider  = 2; // Voltage divider at the input of the control board
 
-const float input_scaler [8]  = {1.0 , 1.0 , 1.0 , 1.0 , 1.0 , 1.0 , 1.0 , 1.0}; // scale the gain of the inputs to correct error in the voltage divider
-const uint32_t   output_offset [8] = {0   , 0   , 0   , 0   , 0   , 0   , 0   , 0}; // output offset voltage
+const float    output_zerovolt_voltage = 3.2f; // magic number 3.2V input = 0 V output
+const uint32_t output_zerovolt_counts  = ((output_zerovolt_voltage * (dac_full_scale))/dac_vref); // output Zero in DAC counts
+const uint32_t output_zerovolt_safe    = output_zerovolt_counts + 1000; // offset this so we aren't on the cusp;; make sure we are zeroed
 
-const float    output_zerovolt_voltage = 2.5f;
-const uint32_t output_zerovolt_counts  = ((output_zerovolt_voltage * (dac_full_scale))/5.0);  // output Zero in DAC counts
-const uint32_t output_zerovolt_safe    = output_zerovolt_counts + 1000;
+const uint16_t imposed_voltage_cap = 2500;
+const uint16_t natural_voltage_cap = output_zerovolt_voltage * hv_multiplier;
+const uint16_t abs_max_voltage     = (imposed_voltage_cap < natural_voltage_cap) ? imposed_voltage_cap : natural_voltage_cap; // use the lowest voltage cap
+const uint16_t abs_max_current     = 100; // 10 * mA
 
-const uint16_t abs_max_voltage = output_zerovolt_voltage * hv_multiplier;
-const uint16_t abs_max_current = 100; // mA
+const uint32_t V_per_uV = 10;
 
-const uint32_t adc_vref = 33; // uC adc voltage reference in deciVolts
+float max_voltage_scaler = 1.1;
+float min_voltage_scaler = 0.9;
+float max_current_scaler = 1.1;
 
-const uint32_t V_per_uV         = 10;
+//----------------------------------------------------------------------------------------------------------------------
+//
+//----------------------------------------------------------------------------------------------------------------------
 
 uint32_t microAmpsToCounts()
 {
@@ -91,7 +108,6 @@ uint16_t invertCounts (uint16_t counts)
 {
     return ((output_zerovolt_counts - counts));
 }
-
 
 void enableChannel (uint8_t channel)
 {

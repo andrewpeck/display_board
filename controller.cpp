@@ -278,14 +278,17 @@ void Controller::deselectCleo()
     cleo.disable();
 }
 
+//----------------------------------------------------------------------------------------------------------------------
+// GPIOs (taken from the spi bus on the rPi header)
+//----------------------------------------------------------------------------------------------------------------------
 
 void Controller::setGPIO (uint8_t io, bool state)
 {
     assert (io>=0 && io<4);
-    digitalWrite (io, state);
+    digitalWrite (gpio_pin[io], state);
 }
 
 void Controller::enableGPIO (uint8_t io)
 {
-    pinMode(io, OUTPUT);
+    pinMode(gpio_pin[io], OUTPUT);
 }
